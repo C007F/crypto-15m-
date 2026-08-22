@@ -63,8 +63,11 @@ def main(argv: list[str] | None = None) -> int:
     if args.cmd == "paper":
         # Deterministic per-asset offset keeps five traders from hitting Kalshi
         # in the same instant; the exchange 429s the whole box, not one process.
+        # Spread startup across several poll intervals. All coins re-list
+        # their window ticker at once on boot and at each 15m rotation; that
+        # simultaneous burst is what draws 429s, not the steady-state rate.
         offset = (zlib.crc32(settings.asset.key.encode()) % 1000) / 1000.0
-        time.sleep(offset * settings.poll_sec)
+        time.sleep(offset * settings.poll_sec * 3)
         print("PAPER loop. look often, trade rarely. daily_cap", settings.daily_loss_usd)
         backoff = 0.0
         while True:

@@ -1,0 +1,12 @@
+[Unit]
+Description=Crypto 15m: create per-asset data directories
+Before=crypto15m@.service crypto15m-dash.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=/home/cam/projects/crypto-15m-bot
+ExecStart=/home/cam/projects/crypto-15m-bot/.venv/bin/python scripts/init_dirs.py
+
+[Install]
+WantedBy=default.target

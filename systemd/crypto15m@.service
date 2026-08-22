@@ -1,6 +1,7 @@
 [Unit]
 Description=Crypto 15m Kalshi paper trader (%i)
-After=network-online.target
+After=network-online.target crypto15m-init.service
+Requires=crypto15m-init.service
 
 [Service]
 Type=simple

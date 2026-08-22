@@ -4,6 +4,7 @@ import base64
 import json
 import time
 import uuid
+from datetime import datetime, timezone
 from decimal import Decimal
 from pathlib import Path
 from urllib.parse import urlparse
@@ -89,6 +90,23 @@ class KalshiClient:
         return self.public_get(f"/series/{self.settings.asset.series}")["series"]
 
     def get_open_market(self) -> MarketQuote | None:
+        """Current 15m contract.
+
+        The window ticker only rotates every 15 minutes, so listing 20 markets
+        every tick was fetching ~20x the payload needed and was the call that
+        drew 429s once several coins ran at once. Once the ticker is known we
+        poll it directly and only re-list when it expires.
+        """
+        cached = getattr(self, "_open_ticker", None)
+        if cached:
+            try:
+                m = self.get_market(cached)
+                if m.status in {"open", "active"} and m.close_time > datetime.now(timezone.utc):
+                    return m
+            except Exception:
+                pass
+            self._open_ticker = None
+
         data = self.public_get("/markets", params={"series_ticker": self.settings.asset.series,
                                                    "status": "open", "limit": 20})
         markets = [parse_market(m) for m in data.get("markets") or []]
@@ -96,6 +114,7 @@ class KalshiClient:
         if not live:
             return None
         live.sort(key=lambda m: m.close_time)
+        self._open_ticker = live[0].ticker
         return live[0]
 
     def get_market(self, ticker: str) -> MarketQuote:
