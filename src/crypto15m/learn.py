@@ -8,7 +8,14 @@ from pathlib import Path
 
 
 def diagnose(entry: dict, *, pnl: Decimal, how: str, result: str = "") -> dict:
-    """Turn a losing trade into a short, honest note. Tags drive later extra caution."""
+    """Turn any closed trade into a short, honest note - won or lost.
+
+    Only recording losses made the book look better than it was: a book that
+    cuts every bad position and holds every good one shows a perfect settled
+    record while losing money. Wins are logged with what went right so the
+    tags mean something in both directions.
+    """
+    won = float(pnl) > 0
     side = (entry.get("side") or "").lower()
     p = float(entry.get("p_yes") or 0.5)
     u = float(entry.get("uncertainty") or 0.5)
@@ -41,25 +48,34 @@ def diagnose(entry: dict, *, pnl: Decimal, how: str, result: str = "") -> dict:
         tags.append("cut")
         bits.append("thesis flipped, we cut")
     elif how == "settle":
-        tags.append("resolved_wrong")
+        tags.append("resolved_right" if won else "resolved_wrong")
         if result:
             bits.append(f"window resolved {result.upper()}, we were {side.upper()}")
         else:
-            bits.append("window resolved against us")
+            bits.append("window resolved " + ("our way" if won else "against us"))
     if abs(float(pnl)) <= 0.15:
         tags.append("fees_ate_it")
-        bits.append("loss is fee/spread sized")
+        bits.append("size is fee/spread sized")
 
-    if not bits:
-        bits.append("lost, no single smoking gun")
-    why = "We lost because we " + "; ".join(bits) + "."
+    if won:
+        # Keep the caution tags off winners: a win taken while unsure is still
+        # a win, and letting it raise the edge bar would punish good outcomes.
+        tags = [t for t in tags if t in {"resolved_right", "fees_ate_it", "late_window"}]
+        if not bits:
+            bits.append("no single reason, it just went our way")
+        why = "We won because we " + "; ".join(bits) + "."
+    else:
+        if not bits:
+            bits.append("lost, no single smoking gun")
+        why = "We lost because we " + "; ".join(bits) + "."
     return {
         "ts": datetime.now(timezone.utc).isoformat(),
         "book": entry.get("book"),
         "ticker": entry.get("ticker"),
         "side": side,
         "pnl": f"{pnl:.4f}",
-        "pnl_txt": f"−${abs(pnl):.2f}",
+        "pnl_txt": ("+" if won else "\u2212") + f"${abs(pnl):.2f}",
+        "won": won,
         "how": how,
         "result": result,
         "tags": tags,
@@ -71,7 +87,7 @@ def diagnose(entry: dict, *, pnl: Decimal, how: str, result: str = "") -> dict:
 
 
 class Coach:
-    """Loss notes on disk. Repeats of the same mistake raise that book's edge bar."""
+    """Notes on every closed trade. Repeat mistakes raise that book's edge bar."""
 
     def __init__(self, path: Path) -> None:
         self.path = path
@@ -102,8 +118,8 @@ class Coach:
         """If a book keeps making the same mistake, demand more leftover edge."""
         tags = Counter()
         for les in self._lessons:
-            if les.get("book") != book_id:
-                continue
+            if les.get("book") != book_id or les.get("won"):
+                continue          # winners must not raise a book's own bar
             for t in les.get("tags") or []:
                 tags[t] += 1
         extra = Decimal("0")

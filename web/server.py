@@ -17,12 +17,14 @@ from crypto15m.assets import ASSETS  # noqa: E402
 
 
 def records(key: str) -> dict:
-    """Settled win/loss per book, straight from the journal.
+    """Win/loss per book over EVERY closed trade.
 
-    Equity alone cannot say whether a book is winning often or winning big
-    once. A settle event carries the book, the side held and the result, so
-    a win is simply result == side. Flatten/invalidate exits are not settles
-    and are counted separately: they are decisions to bail, not outcomes.
+    Counting only settlements produced a selection bias big enough to invert
+    the answer: a book that cuts losers and holds winners showed 12-0 while
+    losing money on three coins. A bail is a closed trade with realised P&L,
+    so it counts. Newer journal rows carry "won" and "pnl"; older ones do not,
+    and for those a bail is scored a loss - should_flatten only fires when the
+    thesis has flipped hard against the position, so it sells below entry.
     """
     import sqlite3
     out: dict[str, dict] = {}
@@ -44,14 +46,26 @@ def records(key: str) -> dict:
         b = d.get("book")
         if not b:
             continue
-        r = out.setdefault(b, {"wins": 0, "losses": 0, "bailed": 0})
+        r = out.setdefault(b, {"wins": 0, "losses": 0, "bailed": 0,
+                               "settled": 0, "won_pnl": 0.0, "lost_pnl": 0.0})
+        if "won" in d:
+            won = bool(d["won"])
+        elif kind == "invalidate":
+            won = False
+        elif d.get("result") in {"yes", "no"}:
+            won = d["result"] == d.get("side")
+        else:
+            continue
         if kind == "invalidate":
             r["bailed"] += 1
-        elif d.get("result") in {"yes", "no"}:
-            if d["result"] == d.get("side"):
-                r["wins"] += 1
-            else:
-                r["losses"] += 1
+        else:
+            r["settled"] += 1
+        r["wins" if won else "losses"] += 1
+        try:
+            v = float(d.get("pnl"))
+            r["won_pnl" if won else "lost_pnl"] += v
+        except (TypeError, ValueError):
+            pass
     return out
 
 
@@ -162,8 +176,10 @@ def build_all() -> dict:
     agg: dict[str, dict] = {}
     for key in ASSETS:
         for bid, r in records(key).items():
-            a = agg.setdefault(bid, {"wins": 0, "losses": 0, "bailed": 0, "pnl": 0.0})
-            a["wins"] += r["wins"]; a["losses"] += r["losses"]; a["bailed"] += r["bailed"]
+            a = agg.setdefault(bid, {"wins": 0, "losses": 0, "bailed": 0,
+                                     "settled": 0, "pnl": 0.0})
+            a["wins"] += r["wins"]; a["losses"] += r["losses"]
+            a["bailed"] += r["bailed"]; a["settled"] += r.get("settled", 0)
         st, _, _ = paths(key)
         if not st.exists():
             continue
@@ -172,7 +188,8 @@ def build_all() -> dict:
         except (OSError, json.JSONDecodeError):
             continue
         for b in raw.get("books") or []:
-            agg.setdefault(b["id"], {"wins": 0, "losses": 0, "bailed": 0, "pnl": 0.0})
+            agg.setdefault(b["id"], {"wins": 0, "losses": 0, "bailed": 0,
+                                     "settled": 0, "pnl": 0.0})
             agg[b["id"]]["pnl"] += float(b.get("pnl") or 0)
             agg[b["id"]]["label"] = b.get("label", b["id"].upper())
 
@@ -182,25 +199,27 @@ def build_all() -> dict:
         pnl = a["pnl"]
         books.append({
             "id": bid, "label": a.get("label", bid.upper()),
-            "wins": a["wins"], "losses": a["losses"], "settled": n,
-            "bailed": a["bailed"],
+            "wins": a["wins"], "losses": a["losses"], "closed": n,
+            "settled": a.get("settled", 0), "bailed": a["bailed"],
             "win_rate": (a["wins"] / n) if n else None,
             "win_txt": f"{a['wins']}-{a['losses']}",
             "rate_txt": f"{a['wins']/n:.0%}" if n else "—",
             "pnl": pnl,
             "pnl_txt": ("+" if pnl >= 0 else "\u2212") + f"${abs(pnl):,.2f}",
             "pnl_tag": "PROFIT" if pnl > 0.004 else "LOSS" if pnl < -0.004 else "FLAT",
+            "per_trade": (pnl / n) if n else None,
+            "per_txt": (("+" if pnl >= 0 else "\u2212") + f"${abs(pnl)/n:.3f}") if n else "\u2014",
             "equity_txt": "", "action": "", "position_txt": "",
         })
     books.sort(key=lambda b: (b["win_rate"] is not None, b["win_rate"] or 0,
-                              b["settled"]), reverse=True)
+                              b["closed"]), reverse=True)
     for i, b in enumerate(books, 1):
         b["rank"] = i
-    lead = books[0] if books and books[0]["settled"] else None
+    lead = books[0] if books and books[0]["closed"] else None
     return {
         "running": True, "asset": "all", "word": "ALL", "tone": "sit",
         "why": (f"{lead['label']} leads across six coins: {lead['rate_txt']} of "
-                f"{lead['settled']} settled  ·  {lead['pnl_txt']}") if lead else "No settled trades yet.",
+                f"{lead['closed']} closed  \u00b7  {lead['pnl_txt']}") if lead else "No closed trades yet.",
         "clock": "—", "ticker": "", "spot": "—", "dist": "", "odds": "—", "odds_sub": "",
         "books": books, "experts": {}, "lessons": [], "tape": [],
         "halt": "CLEAR",
@@ -224,7 +243,8 @@ def build_board() -> dict:
             "odds": d.get("odds"),
             "books": [{k: b.get(k) for k in
                        ("id", "label", "rate_txt", "win_txt", "pnl_txt", "pnl_tag",
-                        "settled", "equity_txt", "action", "rank")}
+                        "closed", "settled", "bailed", "per_txt", "per_trade",
+                        "equity_txt", "action", "rank")}
                       for b in d.get("books") or []],
         })
     coins.sort(key=lambda c: c["key"])
@@ -249,9 +269,10 @@ def build(asset: str = "btc") -> dict:
 
     rec = records(asset)
     for b in books:
-        r = rec.get(b["id"], {"wins": 0, "losses": 0, "bailed": 0})
+        r = rec.get(b["id"], {"wins": 0, "losses": 0, "bailed": 0, "settled": 0})
         n = r["wins"] + r["losses"]
-        b["wins"], b["losses"], b["settled"], b["bailed"] = r["wins"], r["losses"], n, r["bailed"]
+        b["wins"], b["losses"], b["closed"] = r["wins"], r["losses"], n
+        b["settled"], b["bailed"] = r.get("settled", 0), r["bailed"]
         b["win_rate"] = (r["wins"] / n) if n else None
         b["win_txt"] = f"{r['wins']}-{r['losses']}"
         b["rate_txt"] = f"{b['win_rate']:.0%}" if n else "—"
@@ -266,22 +287,25 @@ def build(asset: str = "btc") -> dict:
             b["confidence"] = max(0.0, (centre - margin) / d)
         else:
             b["confidence"] = -1.0
+        b["per_trade"] = (b["pnl"] / b["closed"]) if b["closed"] else None
+        b["per_txt"] = (("+" if b["per_trade"] >= 0 else "\u2212") +
+                        f"${abs(b['per_trade']):.3f}") if b["closed"] else "\u2014"
 
     # Rank by success rate as asked, tie-broken by sample size; books with no
     # settled trades sink to the bottom rather than floating on an empty 0%.
     books.sort(key=lambda b: (b["win_rate"] is not None, b["win_rate"] or 0,
-                              b["settled"]), reverse=True)
+                              b["closed"]), reverse=True)
     for i, b in enumerate(books, 1):
         b["rank"] = i
-    leader = books[0] if books and books[0]["settled"] else None
+    leader = books[0] if books and books[0]["closed"] else None
     word, tone, why = "SIT", "sit", "Four paper accounts. Each has its own strategy and $1,000."
     if not running:
         word, tone, why = "OFF", "off", "Paper loop is not writing."
     elif not mkt:
         word, tone, why = "WAIT", "sit", "Waiting for the next window."
     elif leader:
-        why = (f"{leader['label']} leads: {leader['rate_txt']} of {leader['settled']} "
-               f"settled  ·  {leader['pnl_txt']}")
+        why = (f"{leader['label']} leads: {leader['rate_txt']} of {leader['closed']} "
+               f"closed  ·  {leader['pnl_txt']}")
 
     p = mkt.get("p_yes")
     ask = mkt.get("yes_ask")

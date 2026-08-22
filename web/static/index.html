@@ -11,7 +11,8 @@
   .wrap{max-width:1800px;margin:0 auto;padding:18px 22px 40px}
   h1{font-size:13px;letter-spacing:.16em;text-transform:uppercase;color:var(--amber);
     margin:0 0 2px;font-weight:700}
-  .why{color:var(--dim);font-size:12px;margin-bottom:18px}
+  .why{color:var(--dim);font-size:12px;margin-bottom:6px}
+  .note{color:#6b7d99;font-size:11px;margin-bottom:18px;max-width:78ch}
   h2{font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--dim);
     margin:26px 0 8px;font-weight:600}
   table{border-collapse:collapse;width:100%}
@@ -41,11 +42,15 @@
 </style>
 <div class="wrap">
   <h1>Crypto 15m · strategies ranked by success rate</h1>
+  <div class="note">Success counts every closed trade — settlements and cuts.
+    A book that cuts losers and holds winners looks perfect if you only count
+    settlements. Per trade is the number that says whether it makes money.</div>
   <div class="why" id="why">loading…</div>
 
   <table class="pooled">
     <thead><tr><th class="rank">#</th><th>Strategy</th><th>Success</th>
-      <th>Won–Lost</th><th>Settled</th><th>P/L</th></tr></thead>
+      <th>Won–Lost</th><th>Closed</th><th>Held</th><th>Cut</th>
+      <th>Per trade</th><th>P/L</th></tr></thead>
     <tbody id="pooled"></tbody>
   </table>
 
@@ -62,7 +67,10 @@
       <td class="name">${b.label}</td>
       <td class="rate ${rateClass(b.rate_txt)}">${b.rate_txt}</td>
       <td>${b.win_txt}</td>
+      <td class="muted">${b.closed}</td>
       <td class="muted">${b.settled}</td>
+      <td class="muted">${b.bailed}</td>
+      <td class="${b.per_trade > 0 ? "PROFIT" : b.per_trade < 0 ? "LOSS" : "FLAT"}">${b.per_txt}</td>
       <td class="${b.pnl_tag}">${b.pnl_txt}</td></tr>`).join("");
   }
 
@@ -71,6 +79,7 @@
       <td class="name">${b.label}</td>
       <td class="rate ${rateClass(b.rate_txt)}">${b.rate_txt}</td>
       <td>${b.win_txt}</td>
+      <td class="muted">${b.bailed}</td>
       <td class="${b.pnl_tag}">${b.pnl_txt}</td></tr>`).join("");
     return `<div class="coin ${c.running ? "live" : ""}">
       <div class="chead">
@@ -79,7 +88,8 @@
         <span class="cclock">${c.clock}</span>
       </div>
       <div class="cdist">${c.dist || "&nbsp;"}</div>
-      <table><thead><tr><th>Strategy</th><th>Success</th><th>W–L</th><th>P/L</th></tr></thead>
+      <table><thead><tr><th>Strategy</th><th>Success</th><th>W–L</th>
+        <th>Cut</th><th>P/L</th></tr></thead>
       <tbody>${rows}</tbody></table></div>`;
   }
 

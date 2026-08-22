@@ -160,7 +160,13 @@ class TrialBook:
         }
 
     def _review(self, ticker: str, pnl: Decimal, how: str, result: str = "") -> None:
-        if pnl >= Decimal("-0.01") or self.coach is None:
+        """Every closed trade gets a verdict and a note, won or lost.
+
+        Reviewing only losses hid the bails: a book that cuts its bad
+        positions and holds its good ones shows a spotless settled record
+        while bleeding money on the exits nobody counted.
+        """
+        if self.coach is None:
             return
         entry = self._entries.pop(ticker, None) or {
             "book": self.spec.book_id,
@@ -170,7 +176,8 @@ class TrialBook:
         entry["book"] = self.spec.book_id
         lesson = diagnose(entry, pnl=pnl, how=how, result=result)
         self.coach.record(lesson)
-        self.last_action = f"lesson: {lesson['why'][:80]}"
+        verdict = "won" if lesson.get("won") else "lesson"
+        self.last_action = f"{verdict}: {lesson['why'][:80]}"
 
     def step(
         self,
@@ -225,7 +232,12 @@ class TrialBook:
             self._review(frame.market.ticker, self.portfolio.realized_pnl_today - before, "flatten")
             if not str(self.last_action).startswith("lesson"):
                 self.last_action = f"exit {pos.side}"
-            journal.log("invalidate", {"book": self.spec.book_id, "side": pos.side, "p_yes": view.p_yes}, frame.market.ticker)
+            pnl_flat = self.portfolio.realized_pnl_today - before
+            journal.log("invalidate",
+                        {"book": self.spec.book_id, "side": pos.side,
+                         "p_yes": view.p_yes, "pnl": str(pnl_flat),
+                         "won": pnl_flat > 0},
+                        frame.market.ticker)
             self.save()
             return self.last_action
 
@@ -323,10 +335,12 @@ class TrialBook:
             before = self.portfolio.realized_pnl_today
             fill = self.portfolio.settle(now, ticker, m.result)
             if fill:
-                self._review(ticker, self.portfolio.realized_pnl_today - before, "settle", m.result)
+                pnl_settle = self.portfolio.realized_pnl_today - before
+                self._review(ticker, pnl_settle, "settle", m.result)
                 journal.log(
                     "settle",
-                    {"book": self.spec.book_id, "result": m.result, "side": fill.side},
+                    {"book": self.spec.book_id, "result": m.result, "side": fill.side,
+                     "pnl": str(pnl_settle), "won": m.result == fill.side},
                     ticker,
                 )
                 if not str(self.last_action).startswith("lesson"):

@@ -93,3 +93,32 @@ class BoardRanking(unittest.TestCase):
         for c in coins:
             self.assertTrue(c["label"])
             self.assertTrue(c["books"])
+
+
+class ClosedTradeAccounting(unittest.TestCase):
+    """A book that loses money cannot show a 100% success rate."""
+
+    def board(self):
+        import sys
+        from pathlib import Path
+        sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "web"))
+        import server
+        return server.build_board()
+
+    def test_losing_money_is_never_a_perfect_record(self):
+        for b in self.board()["pooled"]:
+            if b["closed"] and b["pnl"] < -0.01:
+                self.assertLess(b["win_rate"], 1.0,
+                                f"{b['label']} lost money at a {b['rate_txt']} win rate")
+
+    def test_cuts_are_counted_as_closed_trades(self):
+        for b in self.board()["pooled"]:
+            self.assertEqual(b["closed"], b["wins"] + b["losses"])
+            self.assertEqual(b["closed"], b["settled"] + b["bailed"])
+
+    def test_per_coin_losses_show_a_losing_record(self):
+        for c in self.board()["coins"]:
+            for b in c["books"]:
+                if b["closed"] and "−" in (b["pnl_txt"] or ""):
+                    self.assertNotEqual(b["rate_txt"], "100%",
+                                        f"{c['label']}/{b['label']} lost money at 100%")
