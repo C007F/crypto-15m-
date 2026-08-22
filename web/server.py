@@ -143,7 +143,18 @@ def build(asset: str = "btc") -> dict:
     p = mkt.get("p_yes")
     ask = mkt.get("yes_ask")
     bid = mkt.get("yes_bid")
-    btc = mkt.get("btc")
+    # The trader writes "spot"; older migrated status files say "btc".
+    spot_px = mkt.get("spot", mkt.get("btc"))
+
+    def px(v):
+        """Sub-dollar coins need real precision: DOGE at 0.09132 against a
+        0.0914 strike renders as '$0.09 vs $0.09' at two decimals, which hides
+        the entire distance the bot is trading on."""
+        if v is None:
+            return None
+        a = abs(v)
+        d = 2 if a >= 100 else 4 if a >= 1 else 6
+        return f"${v:,.{d}f}"
     strike = mkt.get("strike")
     dist = mkt.get("distance_bps")
     experts = [
@@ -158,8 +169,8 @@ def build(asset: str = "btc") -> dict:
         "why": why,
         "clock": mkt.get("clock") or "—",
         "ticker": mkt.get("ticker") or "",
-        "spot": f"${btc:,.2f}" if btc else "—",
-        "dist": f"strike ${strike:,.2f} · {dist:+.1f} bps" if btc else "",
+        "spot": px(spot_px) or "—",
+        "dist": f"strike {px(strike)} · {dist:+.1f} bps" if spot_px else "",
         "odds": f"{p:.0%} vs {ask:.0%}" if p is not None and ask is not None else "—",
         "odds_sub": f"gate P(up) vs Yes ask · book {bid:.0%}–{ask:.0%}" if bid is not None and ask is not None else "",
         "books": books,

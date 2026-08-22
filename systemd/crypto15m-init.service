@@ -1,6 +1,6 @@
 [Unit]
 Description=Crypto 15m: create per-asset data directories
-Before=crypto15m@.service crypto15m-dash.service
+Before=crypto15m-dash.service
 
 [Service]
 Type=oneshot
