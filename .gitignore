@@ -1,0 +1,13 @@
+.env
+*.pem
+*.key
+data/*.db
+data/*.json
+data/KILL
+data/*.jsonl
+__pycache__/
+*.pyc
+.venv/
+*.egg-info/
+.pytest_cache/
+data/

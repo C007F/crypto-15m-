@@ -1,0 +1,16 @@
+[Unit]
+Description=Crypto 15m dashboard, all coins (127.0.0.1:8800)
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/cam/projects/crypto-15m-bot
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/home/cam/projects/crypto-15m-bot/.venv/bin/python web/server.py
+StandardOutput=append:/home/cam/projects/crypto-15m-bot/data/dash.log
+StandardError=append:/home/cam/projects/crypto-15m-bot/data/dash.log
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=default.target

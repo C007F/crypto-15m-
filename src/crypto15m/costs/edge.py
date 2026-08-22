@@ -1,0 +1,106 @@
+from __future__ import annotations
+
+from decimal import ROUND_DOWN, Decimal
+
+from crypto15m.domain import EdgeReport, MarketQuote, Side
+from crypto15m.costs.fees import taker_fee
+from crypto15m.costs.ticks import round_buy_price, tick_size
+
+
+def fill_price(ask: Decimal, slippage_ticks: int) -> Decimal:
+    """Conservative take: lift the ask, plus N ticks of adverse slippage."""
+    px = ask
+    for _ in range(max(slippage_ticks, 0)):
+        px = px + tick_size(px)
+    return round_buy_price(px)
+
+
+def expected_value(
+    *,
+    p_yes: Decimal,
+    side: Side,
+    ask: Decimal,
+    contracts: Decimal,
+    fee_multiplier: Decimal = Decimal("1"),
+    slippage_ticks: int = 1,
+) -> tuple[Decimal, Decimal, Decimal]:
+    """Return (ev_total, fill_px, fee).
+
+    Binary: win pays $1, lose pays $0. EV is after taker fee on the fill price.
+    """
+    px = fill_price(ask, slippage_ticks)
+    if px >= 1 or px <= 0 or contracts <= 0:
+        return Decimal("0"), px, Decimal("0")
+    fee = taker_fee(contracts, px, fee_multiplier)
+    if side == "yes":
+        ev_per = p_yes * (Decimal("1") - px) - (Decimal("1") - p_yes) * px
+    else:
+        p_no = Decimal("1") - p_yes
+        ev_per = p_no * (Decimal("1") - px) - (Decimal("1") - p_no) * px
+    return ev_per * contracts - fee, px, fee
+
+
+def pick_side(
+    *,
+    p_yes: Decimal,
+    uncertainty: Decimal,
+    market: MarketQuote,
+    min_edge: Decimal,
+    uncertainty_k: Decimal,
+    max_contracts: Decimal,
+    slippage_ticks: int = 1,
+) -> EdgeReport:
+    """Choose Yes or No only if EV/contract clears fees + uncertainty buffer."""
+    buffer = min_edge + uncertainty_k * uncertainty
+    none = EdgeReport(
+        side=None,
+        p_yes=p_yes,
+        ask=Decimal("0"),
+        fill_px=Decimal("0"),
+        fee=Decimal("0"),
+        ev=Decimal("0"),
+        ev_per_contract=Decimal("0"),
+        buffer=buffer,
+        contracts=Decimal("0"),
+        reason="no qualifying side",
+    )
+    if market.yes_ask <= 0 or market.no_ask <= 0:
+        return EdgeReport(**{**none.__dict__, "reason": "missing ask"})
+
+    best: EdgeReport | None = None
+    for side, ask, size in (
+        ("yes", market.yes_ask, market.yes_ask_size),
+        ("no", market.no_ask, market.no_ask_size),
+    ):
+        contracts = max_contracts
+        if size > 0:
+            contracts = min(contracts, size)
+        contracts = contracts.to_integral_value(rounding=ROUND_DOWN)
+        if contracts < 1:
+            continue
+        ev, px, fee = expected_value(
+            p_yes=p_yes,
+            side=side,  # type: ignore[arg-type]
+            ask=ask,
+            contracts=contracts,
+            fee_multiplier=market.fee_multiplier,
+            slippage_ticks=slippage_ticks,
+        )
+        ev_pc = ev / contracts
+        if ev_pc < buffer:
+            continue
+        cand = EdgeReport(
+            side=side,  # type: ignore[arg-type]
+            p_yes=p_yes,
+            ask=ask,
+            fill_px=px,
+            fee=fee,
+            ev=ev,
+            ev_per_contract=ev_pc,
+            buffer=buffer,
+            contracts=contracts,
+            reason=f"{side} EV/contract {ev_pc:.4f} >= buffer {buffer:.4f}",
+        )
+        if best is None or cand.ev > best.ev:
+            best = cand
+    return best or none

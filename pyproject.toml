@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "crypto15m"
+version = "0.2.0"
+description = "Paper-first Kalshi KXBTC15M mind with a hard RiskGovernor"
+requires-python = ">=3.12"
+dependencies = [
+    "requests>=2.32.0",
+    "cryptography>=44.0.0",
+    "python-dotenv>=1.0.1",
+]
+
+[project.scripts]
+crypto15m = "crypto15m.__main__:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]

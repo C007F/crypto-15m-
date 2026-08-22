@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="robots" content="noindex" />
+  <title>Crypto 15m — P&L</title>
+  <style>
+    :root {
+      --bg: #07090c; --panel: #10151c; --line: #243040; --text: #e8eef6;
+      --muted: #8b9bb0; --amber: #ffb000; --green: #3ddc84; --red: #ff5c5c; --sit: #8b9bb0;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; background: var(--bg); color: var(--text); font-family: "IBM Plex Sans", "Segoe UI", sans-serif; }
+    body { padding: 20px 22px 32px; max-width: 1180px; margin: 0 auto; }
+    .top { display: flex; justify-content: space-between; gap: 12px; border-bottom: 2px solid var(--amber); padding-bottom: 10px; }
+    .brand { color: var(--amber); font-weight: 700; letter-spacing: .12em; font-size: 13px; text-transform: uppercase; }
+    .mode { font-size: 13px; color: var(--muted); }
+    .hero { margin: 16px 0 8px; }
+    .hero .word { font-size: clamp(36px, 7vw, 64px); font-weight: 800; line-height: .95; }
+    .hero .why { font-size: 20px; color: var(--muted); margin-top: 8px; }
+    .books { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin: 10px 0 18px; }
+    .card { background: var(--panel); border: 1px solid var(--line); padding: 14px 16px; }
+    .book { min-height: 280px; }
+    .lbl { font-size: 11px; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
+    .name { font-size: 22px; font-weight: 800; margin-top: 4px; letter-spacing: 0.04em; }
+    .tag { font-size: 12px; font-weight: 800; letter-spacing: .16em; margin-top: 10px; }
+    .pnl { font-size: 34px; font-weight: 800; margin-top: 2px; font-variant-numeric: tabular-nums; letter-spacing: -0.03em; }
+    .eq { font-size: 16px; margin-top: 10px; font-variant-numeric: tabular-nums; }
+    .sub { font-size: 13px; color: var(--muted); margin-top: 4px; }
+    .meta { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); }
+    .k { color: var(--amber); font-size: 11px; letter-spacing: .12em; text-transform: uppercase; }
+    .v { font-size: 14px; line-height: 1.35; margin: 2px 0 8px; }
+    .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+    .pills { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+    .pill { border: 1px solid var(--line); padding: 6px 10px; font-size: 13px; background: #0c1117; }
+    .tape { font-family: ui-monospace, Consolas, monospace; font-size: 12px; line-height: 1.55; color: #b7c4d4; white-space: pre-wrap; max-height: 160px; overflow: auto; }
+    .lesson { border-top: 1px solid var(--line); padding: 10px 0; }
+    .lesson:first-child { border-top: 0; padding-top: 0; }
+    .num { font-size: 26px; font-weight: 700; margin-top: 8px; font-variant-numeric: tabular-nums; }
+    .sit { color: var(--sit); } .buy { color: var(--green); } .sell { color: var(--red); }
+    .hold { color: var(--amber); } .off { color: var(--red); }
+    @media (max-width: 900px) { .grid, .books { grid-template-columns: 1fr 1fr; } }
+    @media (max-width: 520px) { .grid, .books { grid-template-columns: 1fr; } }
+    .coins{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0 14px}
+  .coins button{font:inherit;font-size:12px;letter-spacing:.06em;padding:5px 12px;cursor:pointer;
+    border:1px solid #2a3446;background:#111823;color:#8fa3bf;border-radius:3px}
+  .coins button.on{background:#1b2636;color:#e8eef7;border-color:#3d5madd}
+  .coins button .dot{display:inline-block;width:6px;height:6px;border-radius:50%;margin-right:6px;
+    background:#4a5568;vertical-align:middle}
+  .coins button.live .dot{background:#26d07c}
+</style>
+</head>
+<body>
+  <div class="top">
+    <div class="brand" id="brand">15m · P&amp;L by book</div>
+    <div class="coins" id="coins"></div>
+    <div class="mode" id="mode">loading…</div>
+  </div>
+  <div class="hero">
+    <div class="word sit" id="word">…</div>
+    <div class="why" id="why">Connecting to Chester.</div>
+  </div>
+  <div class="books" id="books"></div>
+  <div class="card" style="margin-bottom:10px">
+    <div class="lbl">Lessons from losses</div>
+    <div id="lessons" class="sub">No losses written up yet. Next red trade gets a note.</div>
+  </div>
+  <div class="grid">
+    <div class="card"><div class="lbl">Time left</div><div class="num" id="clock">—</div><div class="sub" id="ticker"></div></div>
+    <div class="card"><div class="lbl" id="spotlbl">spot vs strike</div><div class="num" id="spot">—</div><div class="sub" id="dist"></div></div>
+    <div class="card"><div class="lbl">Gate P vs market</div><div class="num" id="odds">—</div><div class="sub" id="oddsSub"></div></div>
+    <div class="card"><div class="lbl">Risk</div><div class="num" id="halt" style="font-size:22px">—</div><div class="sub" id="riskSub"></div></div>
+  </div>
+  <div class="card" style="margin-top:10px">
+    <div class="lbl">Experts</div>
+    <div class="pills" id="pills"></div>
+  </div>
+  <div class="card" style="margin-top:10px">
+    <div class="lbl">Tape</div>
+    <div class="tape" id="tape"></div>
+  </div>
+<script>
+  const params = new URLSearchParams(location.search);
+  let ASSET = params.get("asset") || localStorage.getItem("asset") || "btc";
+  function renderCoins(list, active) {
+    const el = document.getElementById("coins");
+    if (!el || !list) return;
+    el.innerHTML = "";
+    for (const a of list) {
+      const b = document.createElement("button");
+      b.className = (a.key === active ? "on " : "") + (a.running ? "live" : "");
+      b.innerHTML = '<span class="dot"></span>' + a.label;
+      b.onclick = () => { ASSET = a.key; localStorage.setItem("asset", a.key);
+                          history.replaceState(null, "", "?asset=" + a.key); tick(); };
+      el.appendChild(b);
+    }
+  }
+</script>
+  <script>
+    const wordEl = document.getElementById("word");
+    function card(b) {
+      return (
+        '<div class="card book">' +
+          '<div class="lbl">Paper account</div>' +
+          '<div class="name">' + b.label + "</div>" +
+          '<div class="meta">' +
+            '<div class="k">Strategy</div>' +
+            '<div class="v">' + (b.strategy || "") + "</div>" +
+            '<div class="k">Goal</div>' +
+            '<div class="v">' + (b.goal || "") + "</div>" +
+          "</div>" +
+          '<div class="tag ' + b.pnl_class + '">' + b.pnl_tag + "</div>" +
+          '<div class="pnl ' + b.pnl_class + '">' + b.pnl_txt + "</div>" +
+          '<div class="eq">Account ' + b.equity_txt + " · " + (b.pct_txt || "") + "</div>" +
+          '<div class="sub">Locked in today ' + (b.realized_txt || "—") + " · still open " + (b.open_txt || "—") + "</div>" +
+          '<div class="sub">' + (b.position_txt || "") + " · trades " + b.trades_today + "</div>" +
+          '<div class="sub">' + (b.lesson_bar || "") + "</div>" +
+          '<div class="sub ' + (b.tone || "sit") + '">' + (b.action || "") + "</div>" +
+        "</div>"
+      );
+    }
+    function lessonLine(L) {
+      const book = (L.book || "").toUpperCase();
+      return (
+        '<div class="lesson">' +
+          '<div class="k">' + book + " · " + (L.pnl_txt || "") + "</div>" +
+          '<div class="v">' + (L.why || "") + "</div>" +
+        "</div>"
+      );
+    }
+    async function tick() {
+      try {
+        const r = await fetch("api/status?asset=" + ASSET, { cache: "no-store" });
+        const s = await r.json();
+        renderCoins(s.assets, s.asset);
+        const AL = (s.market && s.market.asset) || (s.asset || "").toUpperCase();
+        document.getElementById("brand").textContent =
+          "KX" + (s.asset || "").toUpperCase() + "15M · P&L by book";
+        document.getElementById("spotlbl").textContent = AL + " vs strike";
+        wordEl.className = "word " + (s.tone || "sit");
+        wordEl.textContent = s.word;
+        document.getElementById("why").textContent = s.why;
+        document.getElementById("mode").textContent =
+          (s.running ? "LIVE FEED" : "LOOP DOWN") + " · paper · learns from losses";
+        document.getElementById("clock").textContent = s.clock;
+        document.getElementById("ticker").textContent = s.ticker || "";
+        document.getElementById("spot").textContent = s.spot;
+        document.getElementById("dist").textContent = s.dist;
+        document.getElementById("odds").textContent = s.odds;
+        document.getElementById("oddsSub").textContent = s.odds_sub;
+        document.getElementById("halt").textContent = s.halt;
+        document.getElementById("riskSub").textContent = s.risk_sub;
+        document.getElementById("books").innerHTML = (s.books || []).map(card).join("");
+        const box = document.getElementById("lessons");
+        if (s.lessons && s.lessons.length) box.innerHTML = s.lessons.map(lessonLine).join("");
+        else box.textContent = "No losses written up yet. Next red settle/exit gets a note.";
+        const pills = document.getElementById("pills");
+        pills.innerHTML = "";
+        (s.experts || []).forEach((e) => {
+          const d = document.createElement("div");
+          d.className = "pill";
+          d.textContent = e;
+          pills.appendChild(d);
+        });
+        document.getElementById("tape").textContent = (s.tape || []).join("\n");
+      } catch (err) {
+        wordEl.className = "word off";
+        wordEl.textContent = "NO FEED";
+        document.getElementById("why").textContent = "Dashboard cannot reach Chester.";
+      }
+    }
+    tick();
+    setInterval(tick, 1000);
+  </script>
+</body>
+</html>
