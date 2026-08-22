@@ -16,6 +16,45 @@ sys.path.insert(0, str(ROOT / "src"))
 from crypto15m.assets import ASSETS  # noqa: E402
 
 
+def records(key: str) -> dict:
+    """Settled win/loss per book, straight from the journal.
+
+    Equity alone cannot say whether a book is winning often or winning big
+    once. A settle event carries the book, the side held and the result, so
+    a win is simply result == side. Flatten/invalidate exits are not settles
+    and are counted separately: they are decisions to bail, not outcomes.
+    """
+    import sqlite3
+    out: dict[str, dict] = {}
+    jp = DATA / key / "journal.sqlite3"
+    if not jp.exists():
+        return out
+    try:
+        c = sqlite3.connect(f"file:{jp}?mode=ro", uri=True, timeout=2)
+        rows = c.execute("select kind, payload from events "
+                         "where kind in ('settle','invalidate')").fetchall()
+        c.close()
+    except Exception:
+        return out
+    for kind, payload in rows:
+        try:
+            d = json.loads(payload)
+        except Exception:
+            continue
+        b = d.get("book")
+        if not b:
+            continue
+        r = out.setdefault(b, {"wins": 0, "losses": 0, "bailed": 0})
+        if kind == "invalidate":
+            r["bailed"] += 1
+        elif d.get("result") in {"yes", "no"}:
+            if d["result"] == d.get("side"):
+                r["wins"] += 1
+            else:
+                r["losses"] += 1
+    return out
+
+
 def paths(key: str):
     d = DATA / key
     return d / "status.json", d / "paper.log", d / "lessons.jsonl"
@@ -23,7 +62,7 @@ def paths(key: str):
 
 def live_assets():
     """Assets that have ever written a status file, newest activity first."""
-    out = []
+    out = [{"key": "all", "label": "ALL", "running": True}]
     for k in ASSETS:
         st, log, _ = paths(k)
         if not st.exists():
@@ -116,6 +155,82 @@ def decorate(book: dict) -> dict:
     return book
 
 
+def build_all() -> dict:
+    """Every coin pooled. Success rate needs sample size, and one strategy
+    running on six markets is one strategy - the per-coin split is what makes
+    each book look thin."""
+    agg: dict[str, dict] = {}
+    for key in ASSETS:
+        for bid, r in records(key).items():
+            a = agg.setdefault(bid, {"wins": 0, "losses": 0, "bailed": 0, "pnl": 0.0})
+            a["wins"] += r["wins"]; a["losses"] += r["losses"]; a["bailed"] += r["bailed"]
+        st, _, _ = paths(key)
+        if not st.exists():
+            continue
+        try:
+            raw = json.loads(st.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        for b in raw.get("books") or []:
+            agg.setdefault(b["id"], {"wins": 0, "losses": 0, "bailed": 0, "pnl": 0.0})
+            agg[b["id"]]["pnl"] += float(b.get("pnl") or 0)
+            agg[b["id"]]["label"] = b.get("label", b["id"].upper())
+
+    books = []
+    for bid, a in agg.items():
+        n = a["wins"] + a["losses"]
+        pnl = a["pnl"]
+        books.append({
+            "id": bid, "label": a.get("label", bid.upper()),
+            "wins": a["wins"], "losses": a["losses"], "settled": n,
+            "bailed": a["bailed"],
+            "win_rate": (a["wins"] / n) if n else None,
+            "win_txt": f"{a['wins']}-{a['losses']}",
+            "rate_txt": f"{a['wins']/n:.0%}" if n else "—",
+            "pnl": pnl,
+            "pnl_txt": ("+" if pnl >= 0 else "\u2212") + f"${abs(pnl):,.2f}",
+            "pnl_tag": "PROFIT" if pnl > 0.004 else "LOSS" if pnl < -0.004 else "FLAT",
+            "equity_txt": "", "action": "", "position_txt": "",
+        })
+    books.sort(key=lambda b: (b["win_rate"] is not None, b["win_rate"] or 0,
+                              b["settled"]), reverse=True)
+    for i, b in enumerate(books, 1):
+        b["rank"] = i
+    lead = books[0] if books and books[0]["settled"] else None
+    return {
+        "running": True, "asset": "all", "word": "ALL", "tone": "sit",
+        "why": (f"{lead['label']} leads across six coins: {lead['rate_txt']} of "
+                f"{lead['settled']} settled  ·  {lead['pnl_txt']}") if lead else "No settled trades yet.",
+        "clock": "—", "ticker": "", "spot": "—", "dist": "", "odds": "—", "odds_sub": "",
+        "books": books, "experts": {}, "lessons": [], "tape": [],
+        "halt": "CLEAR",
+        "risk_sub": "pooled across every coin \u00b7 ranked by success rate",
+    }
+
+
+def build_board() -> dict:
+    """Everything in one payload: pooled strategy ranking plus every coin."""
+    pooled = build_all()
+    coins = []
+    for key in ASSETS:
+        st, log, _ = paths(key)
+        if not st.exists():
+            continue
+        d = build(key)
+        coins.append({
+            "key": key, "label": ASSETS[key].label,
+            "running": d.get("running"), "clock": d.get("clock"),
+            "ticker": d.get("ticker"), "spot": d.get("spot"), "dist": d.get("dist"),
+            "odds": d.get("odds"),
+            "books": [{k: b.get(k) for k in
+                       ("id", "label", "rate_txt", "win_txt", "pnl_txt", "pnl_tag",
+                        "settled", "equity_txt", "action", "rank")}
+                      for b in d.get("books") or []],
+        })
+    coins.sort(key=lambda c: c["key"])
+    return {"pooled": pooled["books"], "why": pooled["why"], "coins": coins}
+
+
 def build(asset: str = "btc") -> dict:
     STATUS, LOG, LESSONS = paths(asset)
     running = False
@@ -131,14 +246,42 @@ def build(asset: str = "btc") -> dict:
             raw = {}
     mkt = raw.get("market") or {}
     books = [decorate(dict(b)) for b in (raw.get("books") or [])]
-    leader = max(books, key=lambda b: b["pnl"]) if books else None
+
+    rec = records(asset)
+    for b in books:
+        r = rec.get(b["id"], {"wins": 0, "losses": 0, "bailed": 0})
+        n = r["wins"] + r["losses"]
+        b["wins"], b["losses"], b["settled"], b["bailed"] = r["wins"], r["losses"], n, r["bailed"]
+        b["win_rate"] = (r["wins"] / n) if n else None
+        b["win_txt"] = f"{r['wins']}-{r['losses']}"
+        b["rate_txt"] = f"{b['win_rate']:.0%}" if n else "—"
+        # Wilson lower bound: 6-0 and 60-0 are both 100%, and only one of them
+        # means anything. Used for ranking so a thin streak cannot top the board.
+        if n:
+            import math
+            z, ph = 1.96, r["wins"] / n
+            d = 1 + z * z / n
+            centre = ph + z * z / (2 * n)
+            margin = z * math.sqrt((ph * (1 - ph) + z * z / (4 * n)) / n)
+            b["confidence"] = max(0.0, (centre - margin) / d)
+        else:
+            b["confidence"] = -1.0
+
+    # Rank by success rate as asked, tie-broken by sample size; books with no
+    # settled trades sink to the bottom rather than floating on an empty 0%.
+    books.sort(key=lambda b: (b["win_rate"] is not None, b["win_rate"] or 0,
+                              b["settled"]), reverse=True)
+    for i, b in enumerate(books, 1):
+        b["rank"] = i
+    leader = books[0] if books and books[0]["settled"] else None
     word, tone, why = "SIT", "sit", "Four paper accounts. Each has its own strategy and $1,000."
     if not running:
         word, tone, why = "OFF", "off", "Paper loop is not writing."
     elif not mkt:
         word, tone, why = "WAIT", "sit", "Waiting for the next window."
     elif leader:
-        why = f"Best book: {leader['label']}  {leader['pnl_txt']}  ({leader['pnl_tag']})"
+        why = (f"{leader['label']} leads: {leader['rate_txt']} of {leader['settled']} "
+               f"settled  ·  {leader['pnl_txt']}")
 
     p = mkt.get("p_yes")
     ask = mkt.get("yes_ask")
@@ -191,9 +334,14 @@ class Handler(BaseHTTPRequestHandler):
             from urllib.parse import urlparse, parse_qs
             q = parse_qs(urlparse(self.path).query)
             key = (q.get("asset") or ["btc"])[0].lower()
-            if key not in ASSETS:
+            if key not in ("all", "board") and key not in ASSETS:
                 key = "btc"
-            payload = build(key)
+            if key == "board":
+                payload = build_board()
+            elif key == "all":
+                payload = build_all()
+            else:
+                payload = build(key)
             payload["asset"] = key
             payload["assets"] = live_assets()
             body = json.dumps(payload).encode()

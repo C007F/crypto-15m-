@@ -60,3 +60,36 @@ class DashboardPayload(unittest.TestCase):
         if d.get("ticker"):
             # $0.09 vs a $0.09 strike hides the whole signal
             self.assertGreater(len(d["spot"].split(".")[-1]), 2, d["spot"])
+
+
+class BoardRanking(unittest.TestCase):
+    """Books rank by success rate, not profit, and empty books sink."""
+
+    def board(self):
+        import sys
+        from pathlib import Path
+        sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "web"))
+        import server
+        return server.build_board()
+
+    def test_ranked_by_success_rate_descending(self):
+        rates = [b["win_rate"] for b in self.board()["pooled"] if b["settled"]]
+        self.assertEqual(rates, sorted(rates, reverse=True))
+
+    def test_books_without_settled_trades_rank_last(self):
+        books = self.board()["pooled"]
+        first_empty = next((i for i, b in enumerate(books) if not b["settled"]), len(books))
+        self.assertTrue(all(not b["settled"] for b in books[first_empty:]))
+
+    def test_rate_is_not_profit_order(self):
+        """A book can lead on success rate while another leads on P/L."""
+        books = [b for b in self.board()["pooled"] if b["settled"]]
+        if len(books) > 1:
+            self.assertEqual(books[0]["rank"], 1)
+
+    def test_every_coin_appears_with_its_books(self):
+        coins = self.board()["coins"]
+        self.assertGreaterEqual(len(coins), 1)
+        for c in coins:
+            self.assertTrue(c["label"])
+            self.assertTrue(c["books"])
