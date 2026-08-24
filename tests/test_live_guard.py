@@ -294,3 +294,35 @@ class NoSideCostBasis(unittest.TestCase):
         no_cost = Decimal("1") - avg
         self.assertEqual(no_cost, Decimal("0.0690"))
         self.assertGreater(yes_cost, no_cost * 13)   # the size of the error
+
+
+class RetryOnRejection(unittest.TestCase):
+    """A rejection means the quote moved, not that the idea was wrong."""
+
+    def src(self):
+        from pathlib import Path
+        return (Path(__file__).resolve().parents[1] / "src/crypto15m/trials.py").read_text()
+
+    def test_a_rejected_window_is_not_burned(self):
+        s = self.src()
+        self.assertIn("if got:\n            self._spent.add(tk)", s,
+                      "the window should only be spent on an actual fill")
+
+    def test_retries_are_capped(self):
+        from crypto15m.trials import MAX_ENTRY_ATTEMPTS
+        self.assertEqual(MAX_ENTRY_ATTEMPTS, 3)
+        self.assertIn("if n >= MAX_ENTRY_ATTEMPTS:", self.src())
+
+    def test_the_counter_survives_a_restart(self):
+        s = self.src()
+        self.assertIn('"attempts": self._attempts,', s)
+        self.assertIn('self._attempts = dict(data.get("attempts") or {})', s)
+
+    def test_a_retry_must_re_earn_the_edge(self):
+        """decide() re-runs from scratch, so a retry only happens if EV still
+        clears the bar at the new price. That is what makes it not chasing."""
+        from pathlib import Path
+        dec = (Path(__file__).resolve().parents[1] /
+               "src/crypto15m/policy/decision.py").read_text()
+        self.assertIn("report = pick_side(", dec)
+        self.assertIn("if report.side is None:", dec)

@@ -48,6 +48,16 @@ class BookSpec:
 # The only books allowed to touch real money. Everything else stays on paper.
 LIVE_BOOKS = frozenset({"micro"})
 
+# A rejected order means the quote moved, not that the idea was wrong. Retrying
+# is safe BECAUSE decide() re-runs from scratch on the next tick: it re-reads
+# the book, recomputes EV against the new price, and only fires again if the
+# edge still clears the bar. So a retry is never chasing - if the move killed
+# the edge, there is no second order.
+#
+# The cap is against pathology, not against chasing: a market that keeps
+# rejecting would otherwise absorb every tick of a window.
+MAX_ENTRY_ATTEMPTS = 3
+
 BOOKS = (
     BookSpec("gate", "GATE", "Mix of all experts", "gate"),
     BookSpec("micro", "MICRO", "Stale Kalshi odds vs spot. Up to 3x on conviction.",
@@ -102,6 +112,7 @@ class TrialBook:
         )
         self.path = settings.data_dir / "accounts" / f"{spec.book_id}.json"
         self._spent: set[str] = set()
+        self._attempts: dict[str, int] = {}
         self._entries: dict[str, dict] = {}
         self.last_action = "boot"
         self.load()
@@ -115,6 +126,7 @@ class TrialBook:
             return
         self.portfolio.load_state(data["portfolio"])
         self._spent = set(data.get("spent") or [])
+        self._attempts = dict(data.get("attempts") or {})
         self._entries = data.get("entries") or {}
         self.last_action = data.get("last_action") or self.last_action
 
@@ -124,6 +136,7 @@ class TrialBook:
             "book_id": self.spec.book_id,
             "last_action": self.last_action,
             "spent": sorted(self._spent),
+            "attempts": self._attempts,
             "entries": self._entries,
             "portfolio": self.portfolio.to_state(),
         }
@@ -286,6 +299,7 @@ class TrialBook:
         if rolled:
             self.governor.roll_day(snap)
             self._spent.clear()
+            self._attempts.clear()
             journal.log("day_roll", {"book": self.spec.book_id, "equity": snap.equity}, frame.market.ticker)
 
         halt = self.governor.observe(snap)
@@ -367,13 +381,20 @@ class TrialBook:
             return self.last_action
 
         got = self._fill(frame, intent, permit, now, journal, live, client, view, views)
-        # One attempt per window either way: a rejected order still consumed
-        # the opportunity, and retrying into a moving book is how you chase.
-        self._spent.add(frame.market.ticker)
+        tk = frame.market.ticker
         if got:
+            self._spent.add(tk)
             self.last_action = f"bought {intent.side} x{got}"
-        elif not str(self.last_action).startswith(("no fill", "order reject", "live cap")):
-            self.last_action = "order did not fill"
+        else:
+            n = int(self._attempts.get(tk, 0)) + 1
+            self._attempts[tk] = n
+            if n >= MAX_ENTRY_ATTEMPTS:
+                self._spent.add(tk)          # stop pestering this window
+                journal.log("attempts_exhausted",
+                            {"book": self.spec.book_id, "attempts": n}, tk)
+            if not str(self.last_action).startswith(("no fill", "order reject", "live cap")):
+                self.last_action = "order did not fill"
+            self.last_action += f" ({n}/{MAX_ENTRY_ATTEMPTS})"
         self.save()
         return self.last_action
 
