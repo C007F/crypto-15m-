@@ -9,8 +9,8 @@ git remote** by design.
 ## TL;DR
 
 Six live traders are running micro on **$200 of real Kalshi money**, one
-contract max. **Balance unchanged at $199.9830. Zero positions. 9 orders
-attempted, 0 filled.**
+contract max. **Balance $199.7900. Zero positions. 12 bot orders attempted, 0
+filled.** The 19.3c difference is manual probing, not the bot.
 
 The open question is whether micro's paper edge survives a retail order path.
 Current evidence says **probably not**, but the sample is small.
@@ -63,6 +63,37 @@ book stillness     86% of 2s intervals move 0 ticks
 Micro fires **precisely when the book is not still** — a stale quote is stale
 because the market just moved. **The signal and the fill failure share a
 cause.** Our orders systematically land in the fast 14%.
+
+### RESOLVED: the order path is not broken — the market is just fast
+
+A bid of 0.48 against an ask of 0.43 with 2,212 contracts resting was
+rejected. That looked like a bug. It was not: by the time the order landed the
+book had moved to 0.48/0.49. **BTC moved 6 cents between reading the quote and
+placing the order.** A repeat bid at ask+5c filled immediately.
+
+So pricing, side vocabulary (bid|ask on the YES leg) and the V2 body are all
+correct. Every rejection so far is the market outrunning a 26ms round trip
+plus a 2s poll.
+
+### The finding that changes the economics
+
+Closing that probe position: bought YES at **0.49**, sold with an aggressive
+limit (0.01, accept any bid) and **filled at 0.33** - while the visible bid
+moments earlier was 0.48.
+
+**fill_or_kill guarantees no slippage against the limit, but the fill lands at
+whatever the best bid is AT THAT INSTANT, which can be far from what you last
+saw.** A 15 cent gap on a liquid BTC market.
+
+Micro's paper economics assume a **5 cent** cut. If real cuts cost 15 cents:
+
+| | paper | if cuts cost 15c |
+|---|---|---|
+| expectancy / contract | +$0.111 | **+$0.030** |
+
+Still positive, but roughly a quarter of the modelled edge. One sample, in a
+fast market - do not treat it as settled. **Measure realised cut cost as soon
+as any position is actually held.** It matters more than fill rate.
 
 ### The one data point with real timing
 
