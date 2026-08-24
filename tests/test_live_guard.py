@@ -273,3 +273,26 @@ class CrossCushionIsAbsolute(unittest.TestCase):
         from decimal import Decimal
         from crypto15m.costs.edge import fill_price
         self.assertEqual(fill_price(Decimal("0.43"), 0), Decimal("0.43"))
+
+
+class NoSideCostBasis(unittest.TestCase):
+    """average_fill_price is always on the YES leg.
+
+    The first live fill bought a NO contract for 6.9c and the bot booked it at
+    93.1c, then reported a 94c loss on a trade that really cost 7.35c. The
+    inflated number fed the daily loss cap, which would have halted trading
+    after ~16 trades instead of ~200.
+    """
+
+    def test_no_side_cost_is_one_minus_the_yes_price(self):
+        from pathlib import Path
+        src = (Path(__file__).resolve().parents[1] / "src/crypto15m/trials.py").read_text()
+        self.assertIn('price = avg if intent.side == "yes" else (Decimal("1") - avg)', src)
+
+    def test_the_arithmetic(self):
+        from decimal import Decimal
+        avg = Decimal("0.9310")
+        yes_cost = avg
+        no_cost = Decimal("1") - avg
+        self.assertEqual(no_cost, Decimal("0.0690"))
+        self.assertGreater(yes_cost, no_cost * 13)   # the size of the error

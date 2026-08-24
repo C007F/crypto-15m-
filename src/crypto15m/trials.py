@@ -543,7 +543,12 @@ class TrialBook:
                 return 0
             count = Decimal(filled)
             if avg is not None:
-                price = avg
+                # average_fill_price is always quoted on the YES leg. A NO
+                # position costs (1 - that). Recording the raw number booked a
+                # 6.9c NO contract at 93.1c and reported a 94c loss on a trade
+                # that actually cost 7.35c - 13x too much - and that inflated
+                # figure was being fed straight into the daily loss cap.
+                price = avg if intent.side == "yes" else (Decimal("1") - avg)
             fee = taker_fee(count, price, market.fee_multiplier)
 
         self.portfolio.apply_open(
