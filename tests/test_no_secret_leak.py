@@ -61,3 +61,20 @@ class LiveIsMicroOnly(unittest.TestCase):
                          "a book with measured negative expectancy is live")
         self.assertGreater(len(BOOKS), len(LIVE_BOOKS),
                            "paper should still run every book for comparison")
+
+
+class LiveDashboardIsClean(unittest.TestCase):
+    def test_live_payload_has_no_secrets(self):
+        import sys
+        from pathlib import Path
+        sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "web"))
+        import live_server
+        payload = json.dumps(live_server.build(), default=str)
+        for pat in SECRET_PATTERNS:
+            self.assertIsNone(pat.search(payload), f"live payload leaked {pat.pattern}")
+
+    def test_live_server_never_touches_credentials(self):
+        from pathlib import Path
+        src = (Path(__file__).resolve().parents[1] / "web/live_server.py").read_text()
+        for bad in ("kalshi_private", ".env", "KALSHI_API", "api_secret", "load_settings"):
+            self.assertNotIn(bad, src, f"live dashboard references {bad}")

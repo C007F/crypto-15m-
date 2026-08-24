@@ -1,0 +1,16 @@
+[Unit]
+Description=Crypto 15m LIVE dashboard (127.0.0.1:8810)
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/cam/projects/crypto-15m-bot
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/home/cam/projects/crypto-15m-bot/.venv/bin/python web/live_server.py
+StandardOutput=append:/home/cam/projects/crypto-15m-bot/data/live_dash.log
+StandardError=append:/home/cam/projects/crypto-15m-bot/data/live_dash.log
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=default.target
