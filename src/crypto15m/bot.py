@@ -129,9 +129,13 @@ class Mind:
             eq = None
             try:
                 bal = self.client.get_balance()
-                raw = bal.get("balance")
-                if raw is not None:
-                    eq = Decimal(str(raw)) / Decimal("100")   # Kalshi cents
+                # Kalshi returns both; prefer the explicit dollars field over
+                # dividing cents, so a units change upstream cannot silently
+                # make the account look 100x richer.
+                if bal.get("balance_dollars") is not None:
+                    eq = Decimal(str(bal["balance_dollars"]))
+                elif bal.get("balance") is not None:
+                    eq = Decimal(str(bal["balance"])) / Decimal("100")
             except Exception:
                 log.warning("balance fetch failed", exc_info=True)
             if eq is not None:

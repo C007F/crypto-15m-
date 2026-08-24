@@ -16,6 +16,32 @@ from crypto15m.domain import MarketQuote, Permit
 from crypto15m.kalshi.markets import parse_market
 
 
+# Every path this client may ever touch. Deposits, withdrawals and transfers
+# are absent by construction, and _guard_path() raises on anything not listed,
+# so a future edit cannot quietly add one. The bot can read markets, read its
+# balance, and place orders. It cannot move money.
+ALLOWED_PREFIXES = (
+    "/markets",
+    "/series/",
+    "/portfolio/balance",
+    "/portfolio/orders",
+    "/portfolio/positions",
+    "/portfolio/fills",
+)
+
+FORBIDDEN = ("deposit", "withdraw", "transfer", "payment", "bank", "ach", "wallet")
+
+
+def _guard_path(path: str) -> str:
+    low = path.lower()
+    for word in FORBIDDEN:
+        if word in low:
+            raise RuntimeError(f"refusing to call a money-movement endpoint: {path}")
+    if not any(low.startswith(p) for p in ALLOWED_PREFIXES):
+        raise RuntimeError(f"endpoint not on the allowlist: {path}")
+    return path
+
+
 class KalshiClient:
     """Kalshi Trade API v2. Same RSA-PSS headers as kalshi_python_sync.
 
@@ -30,7 +56,7 @@ class KalshiClient:
         self._private_key = None
 
     def _url(self, path: str) -> str:
-        return f"{self.settings.rest_base}{path}"
+        return f"{self.settings.rest_base}{_guard_path(path)}"
 
     def _load_key(self):
         if self._private_key is not None:
