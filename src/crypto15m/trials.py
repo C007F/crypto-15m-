@@ -30,6 +30,9 @@ class BookSpec:
     size_mult: Decimal = Decimal("1")   # scales this book's per-trade caps only
 
 
+# The only books allowed to touch real money. Everything else stays on paper.
+LIVE_BOOKS = frozenset({"micro"})
+
 BOOKS = (
     BookSpec("gate", "GATE", "Mix of all experts", "gate"),
     BookSpec("micro", "MICRO", "Stale Kalshi odds vs spot. Up to 3x on conviction.",

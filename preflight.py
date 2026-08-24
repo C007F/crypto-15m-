@@ -147,6 +147,36 @@ def _allowlist():
             f"{len(ALLOWED_PREFIXES)} endpoints reachable, read+orders only")
 check("endpoint allowlist is narrow", _allowlist)
 
+# ------------------------------------------------------------- live scope
+def _micro_only():
+    from crypto15m.trials import BOOKS, LIVE_BOOKS
+    return (set(LIVE_BOOKS) == {"micro"},
+            f"live={sorted(LIVE_BOOKS)}  paper={[b.book_id for b in BOOKS]}")
+check("only micro trades real money", _micro_only)
+
+# ------------------------------------------------------------- secret hygiene
+def _no_leak():
+    import subprocess
+    r = subprocess.run([sys.executable, "-m", "unittest",
+                        "tests.test_no_secret_leak", "-q"],
+                       capture_output=True, text=True)
+    return r.returncode == 0, "web payloads and pages scanned clean"
+check("no secrets reachable from the web", _no_leak)
+
+def _perms():
+    bad = [f for f in ("kalshi_private.pem", ".env")
+           if Path(f).exists() and (Path(f).stat().st_mode & 0o077)]
+    return not bad, f"secrets are 0600 ({'ok' if not bad else bad})"
+check("secret files are not world/group readable", _perms)
+
+def _dash_auth():
+    import subprocess
+    url = "http://127.0.0.1/db589b7806aff1205013854472d697e5/crypto/api/status?asset=board"
+    r = subprocess.run(["curl", "-s", "-o", "/dev/null", "-w", "%{http_code}", url],
+                       capture_output=True, text=True)
+    return r.stdout.strip() == "401", f"unauthenticated dashboard -> {r.stdout.strip()}"
+check("dashboards require a password", _dash_auth)
+
 # ------------------------------------------------------------------- location
 def _local():
     import socket

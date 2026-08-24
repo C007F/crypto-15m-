@@ -21,7 +21,7 @@ from crypto15m.perception.spot_feed import fetch_spot_quote
 from crypto15m.ladder import LadderObserver
 from crypto15m.costs.fees import taker_fee
 from crypto15m.live import FillLog, LiveGuard
-from crypto15m.trials import BOOKS, TrialBook
+from crypto15m.trials import BOOKS, LIVE_BOOKS, TrialBook
 
 
 class Mind:
@@ -43,9 +43,17 @@ class Mind:
         self.guard = (LiveGuard(settings.data_dir.parent / "live_state.json")
                       if live else None)
         self.fills = FillLog(settings.data_dir / "fills.jsonl") if live else None
+        # LIVE TRADES MICRO ONLY. The paper board runs five books so the
+        # comparison stays honest, but three of them lose money: momentum
+        # -$0.18/trade, lotto -$0.19/trade, gate flat. Putting real money
+        # behind a book with measured negative expectancy is not a decision
+        # anyone should be able to make by forgetting to.
+        specs = BOOKS
+        if live:
+            specs = tuple(b for b in BOOKS if b.book_id in LIVE_BOOKS)
         self.books = [TrialBook(spec, settings, coach=self.coach,
                                 guard=self.guard, fills=self.fills)
-                      for spec in BOOKS]
+                      for spec in specs]
         self.spot_candles = CandleStore(settings.asset.spot_product)
         self.ref_candles = CandleStore(settings.asset.ref_product)
         self._candle_ts = 0.0
