@@ -10,6 +10,7 @@ from decimal import Decimal
 from crypto15m.config import Settings
 from crypto15m.costs.fees import taker_fee
 from crypto15m.domain import Denial, ExpertView, Intent, MarketQuote, Permit
+from crypto15m.kalshi.client import parse_fill
 from crypto15m.learn import Coach, diagnose
 from crypto15m.live import FillLog, FillRecord, LiveGuard
 from crypto15m.perception.features import FeatureFrame
@@ -18,6 +19,20 @@ from crypto15m.portfolio.paper import PaperPortfolio
 from crypto15m.risk.governor import RiskGovernor, RiskLimits
 
 log = logging.getLogger(__name__)
+
+
+def _close_permit(ticker: str, side: str, price: Decimal) -> Permit:
+    """Permit for an exit. place_order refuses live orders without one, and a
+    cut that cannot be placed is the failure mode that inverts the strategy,
+    so exits get a permit rather than an exemption."""
+    import uuid as _uuid
+    from datetime import timedelta, timezone
+    return Permit(
+        id=str(_uuid.uuid4()), ticker=ticker, side=side,
+        max_contracts=Decimal("9999"), max_price=Decimal(str(price)),
+        expires_at=datetime.now(timezone.utc) + timedelta(seconds=30),
+        reason="risk exit",
+    )
 
 
 @dataclass(frozen=True)
@@ -181,12 +196,26 @@ class TrialBook:
         """
         if not live or client is None:
             return True
-        px = market.yes_bid if pos.side == "yes" else market.no_bid
+        # Closing is the opposite leg: a YES position is closed by SELLING
+        # yes ("ask"); a NO position is closed by buying yes ("bid").
+        #
+        # The limit is deliberately extreme, not the last-seen quote. Verified
+        # live: two closes priced at the quote were rejected with
+        # fill_or_kill_insufficient_resting_volume because the market moved
+        # between fetching the quote and the order landing - BTC ran 0.78 to
+        # 0.90 in under a minute. fill_or_kill executes at the BEST AVAILABLE
+        # price, not at the limit (an entry limited to 0.22 filled at 0.86), so
+        # crossing hard costs nothing and is the difference between a 5c cut
+        # and riding a loser to settlement for the full stake.
+        if pos.side == "yes":
+            leg, px = "ask", Decimal("0.01")     # sell into any bid
+        else:
+            leg, px = "bid", Decimal("0.99")     # buy from any ask
         try:
             resp = client.place_order(
                 ticker=market.ticker, side=pos.side, count=pos.contracts,
-                price=px, permit=None, dry_run=False, yes_leg=pos.side,
-                action="sell",
+                price=px, permit=_close_permit(market.ticker, pos.side, px),
+                dry_run=False, yes_leg=leg,
             )
         except Exception:
             log.exception("live close failed for %s", market.ticker)
@@ -194,8 +223,8 @@ class TrialBook:
         if resp.get("http_status") not in (200, 201, None):
             log.error("live close rejected for %s: %s", market.ticker, str(resp)[:200])
             return False
-        order = (resp or {}).get("order") or {}
-        if int(float(order.get("filled_count") or 0)) < 1:
+        closed, _ = parse_fill(resp)
+        if closed < 1:
             log.warning("live close did not fill for %s; position still open",
                         market.ticker)
             return False
@@ -438,15 +467,16 @@ class TrialBook:
         if live and self.fills is not None:
             # fill_or_kill means an unfilled order is the measurement, not an
             # error: it says the stale quote was gone by the time we reached it.
-            order = (resp or {}).get("order") or {}
+            got, got_px = parse_fill(resp)
             self.fills.write(FillRecord(
                 ts=now.isoformat(timespec="seconds"),
                 asset=self.settings.asset.key, ticker=market.ticker,
                 side=intent.side, requested=int(count),
                 quoted_px=str(price),
-                filled=int(float(order.get("filled_count") or 0)),
-                fill_px=str(order.get("average_fill_price") or ""),
-                status=str(order.get("status") or resp.get("status") or "unknown"),
+                filled=got,
+                fill_px=str(got_px or ""),
+                status=str(resp.get("status")
+                           or (resp.get("error") or {}).get("code") or "ok"),
                 remaining_sec=round(frame.remaining_sec, 1),
                 p_yes=str(view.p_yes),
             ))
@@ -464,22 +494,18 @@ class TrialBook:
             # case and the whole reason we are going live. Recording the
             # requested size here would book a position we do not own, then
             # manage it, then feed imaginary losses into the daily cap.
-            order = (resp or {}).get("order") or {}
-            filled = int(float(order.get("filled_count") or 0))
+            filled, avg = parse_fill(resp)
             if filled < 1:
                 journal.log("no_fill",
                             {"book": self.spec.book_id, "requested": str(count),
                              "quoted": str(price),
-                             "status": order.get("status") or resp.get("status")},
+                             "remaining": resp.get("remaining_count")},
                             market.ticker)
                 self.last_action = "no fill: quote gone"
                 return
             count = Decimal(filled)
-            avg = order.get("average_fill_price")
             if avg is not None:
-                # Kalshi reports cents; anything above 1 is not a dollar price.
-                a = Decimal(str(avg))
-                price = a / Decimal("100") if a > 1 else a
+                price = avg
             fee = taker_fee(count, price, market.fee_multiplier)
 
         self.portfolio.apply_open(

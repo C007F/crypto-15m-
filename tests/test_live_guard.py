@@ -149,3 +149,36 @@ class SharedAcrossCoins(unittest.TestCase):
         """A failed balance fetch must halt, not fall back to a guess."""
         g = self.guard()
         self.assertIn("refusing", g.blocked(None))
+
+
+class ExitsMustCross(unittest.TestCase):
+    """A cut that does not fill is the failure mode that inverts the strategy."""
+
+    def test_close_uses_an_extreme_limit_not_the_last_quote(self):
+        from pathlib import Path
+        src = Path(__file__).resolve().parents[1] / "src/crypto15m/trials.py"
+        body = src.read_text()
+        i = body.index("def _live_close")
+        j = body.index("def _review", i)
+        close = body[i:j]
+        self.assertIn('Decimal("0.01")', close, "sell side must accept any bid")
+        self.assertIn('Decimal("0.99")', close, "buy side must take any ask")
+        self.assertNotIn("market.yes_bid", close,
+                         "closing at the last-seen quote was rejected live")
+
+    def test_fill_parser_matches_the_verified_v2_shape(self):
+        from crypto15m.kalshi.client import parse_fill
+        real = {"average_fee_paid": "0.0085", "average_fill_price": "0.8600",
+                "fill_count": "1.00", "remaining_count": "0.00",
+                "order_id": "01a034d9", "http_status": 201}
+        n, px = parse_fill(real)
+        self.assertEqual(n, 1)
+        self.assertEqual(px, __import__("decimal").Decimal("0.8600"))
+        rejected = {"error": {"code": "fill_or_kill_insufficient_resting_volume"},
+                    "http_status": 409}
+        self.assertEqual(parse_fill(rejected), (0, None))
+
+    def test_order_endpoint_is_v2(self):
+        from crypto15m.kalshi.client import KalshiClient
+        self.assertEqual(KalshiClient.order_path, "/portfolio/events/orders",
+                         "/portfolio/orders is V1 and returns HTTP 410")

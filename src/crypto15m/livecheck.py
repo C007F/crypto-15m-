@@ -12,8 +12,28 @@ from __future__ import annotations
 import json
 from decimal import Decimal
 
+import uuid
+from datetime import datetime, timedelta, timezone
+
 from crypto15m.bot import Mind
 from crypto15m.config import Settings
+from crypto15m.domain import Permit
+from crypto15m.kalshi.client import parse_fill
+
+
+def _permit(ticker: str, side: str, price: Decimal) -> Permit:
+    """A real single-use permit for the verification order.
+
+    place_order refuses a live order without one, which is correct and stays
+    that way. The check builds a genuine permit rather than bypassing the
+    guard, so this exercises the same path the bot will.
+    """
+    return Permit(
+        id=str(uuid.uuid4()), ticker=ticker, side=side,
+        max_contracts=Decimal("1"), max_price=price,
+        expires_at=datetime.now(timezone.utc) + timedelta(seconds=30),
+        reason="livecheck: single-contract verification",
+    )
 
 
 def run(settings: Settings) -> int:
@@ -49,23 +69,22 @@ def run(settings: Settings) -> int:
         return 1
     print(f"\nplacing 1 contract {side.upper()} @ {price}  (max risk ${price})")
 
+    # side is bid|ask on the YES leg: buying NO is selling YES.
+    leg = "bid" if side == "yes" else "ask"
     resp = client.place_order(ticker=market.ticker, side=side, count=Decimal("1"),
-                              price=price, permit=None, dry_run=False,
-                              yes_leg=side, action="buy")
+                              price=price, permit=_permit(market.ticker, side, price),
+                              dry_run=False, yes_leg=leg)
     print(f"\nraw response    : {json.dumps(resp, default=str)[:600]}")
 
-    order = (resp or {}).get("order") or {}
-    if not order:
-        print("\nFAIL  no `order` object in the response.")
-        print("      The parser expects resp['order']['filled_count'] and")
-        print("      resp['order']['average_fill_price']. Fix trials._fill to")
-        print("      match the shape above before running anything live.")
+    if (resp or {}).get("error"):
+        print(f"\nFAIL  {resp['error']}")
         return 1
 
-    filled = int(float(order.get("filled_count") or 0))
-    print(f"\nfilled_count    : {filled}")
-    print(f"avg fill price  : {order.get('average_fill_price')}")
-    print(f"status          : {order.get('status')}")
+    filled, avg = parse_fill(resp)
+    print(f"\norder_id        : {resp.get('order_id')}")
+    print(f"fill_count      : {filled}")
+    print(f"avg fill price  : {avg}")
+    print(f"remaining_count : {resp.get('remaining_count')}")
 
     if filled < 1:
         print("\nPASS (no fill). The order path works and fill_or_kill behaved:")
@@ -73,12 +92,16 @@ def run(settings: Settings) -> int:
         return 0
 
     print("\nfilled - closing it back out")
+    # opposite leg to close
+    close_leg = "ask" if side == "yes" else "bid"
+    close_px = market.yes_bid if side == "yes" else market.yes_ask
     close = client.place_order(ticker=market.ticker, side=side, count=Decimal("1"),
-                               price=(market.yes_bid if side == "yes" else market.no_bid),
-                               permit=None, dry_run=False, yes_leg=side, action="sell")
+                               price=close_px,
+                               permit=_permit(market.ticker, side, close_px),
+                               dry_run=False, yes_leg=close_leg)
     print(f"close response  : {json.dumps(close, default=str)[:400]}")
-    c_order = (close or {}).get("order") or {}
-    if int(float(c_order.get("filled_count") or 0)) < 1:
+    closed, _ = parse_fill(close)
+    if closed < 1:
         print("\nWARNING  the close did NOT fill. You are holding 1 contract.")
         print("         Close it by hand on Kalshi before running anything else.")
         return 1

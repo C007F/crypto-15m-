@@ -25,11 +25,39 @@ ALLOWED_PREFIXES = (
     "/series/",
     "/portfolio/balance",
     "/portfolio/orders",
+    "/portfolio/events/orders",
     "/portfolio/positions",
     "/portfolio/fills",
 )
 
 FORBIDDEN = ("deposit", "withdraw", "transfer", "payment", "bank", "ach", "wallet")
+
+
+def parse_fill(resp: dict) -> tuple[int, Decimal | None]:
+    """(contracts filled, average fill price) from a V2 order response.
+
+    V2 returns fill_count and average_fill_price at the TOP LEVEL - there is
+    no `order` wrapper, and the field is fill_count not filled_count. Reading
+    the wrong shape would have made every order look unfilled, which reads as
+    a dead strategy rather than a parsing bug.
+    """
+    if not resp:
+        return 0, None
+    body = resp.get("order") if isinstance(resp.get("order"), dict) else resp
+    raw = body.get("fill_count", body.get("filled_count"))
+    try:
+        n = int(float(raw))
+    except (TypeError, ValueError):
+        n = 0
+    px = body.get("average_fill_price")
+    if px in (None, "", 0):
+        return n, None
+    try:
+        val = Decimal(str(px))
+    except Exception:
+        return n, None
+    # dollars come back as a fixed-point string; cents as an integer > 1
+    return n, (val / Decimal("100") if val > 1 else val)
 
 
 def _guard_path(path: str) -> str:
@@ -147,7 +175,8 @@ class KalshiClient:
         return parse_market(self.public_get(f"/markets/{ticker}")["market"])
 
     # Overridable so livecheck can try the documented path without a code edit.
-    order_path = "/portfolio/orders"
+    # V2. /portfolio/orders is V1 and returns HTTP 410.
+    order_path = "/portfolio/events/orders"
 
     def get_balance(self) -> dict:
         return self.auth_get("/portfolio/balance")
@@ -166,24 +195,19 @@ class KalshiClient:
     ) -> dict:
         if not dry_run and permit is None:
             raise RuntimeError("refusing live order without RiskGovernor permit")
-        # UNVERIFIED AGAINST THE LIVE API. This body has only ever been built
-        # for dry runs. Kalshi documents /portfolio/orders with an integer
-        # `count`, an `action` of buy|sell, a `type`, and prices in CENTS as
-        # integers (yes_price / no_price). Run `python -m crypto15m livecheck`
-        # to place one real 1-contract order and confirm the shape before any
-        # automation touches this.
-        cents = int(round(float(price) * 100))
-        cents = max(1, min(99, cents))
+        # V2 order shape, verified against a live 410 and Kalshi's docs.
+        # `side` is bid|ask on the YES leg, NOT yes|no: buying NO is expressed
+        # as selling YES. yes_leg_price() already returns it that way.
+        # count and price are fixed-point STRINGS, not numbers.
         body = {
             "ticker": ticker,
-            "action": action,
             "side": yes_leg,
-            "count": int(count),
-            "type": "limit",
+            "count": f"{Decimal(count):.2f}",
+            "price": f"{Decimal(price):.4f}",
             "time_in_force": "fill_or_kill",
+            "self_trade_prevention_type": "taker_at_cross",
             "client_order_id": str(uuid.uuid4()),
         }
-        body["yes_price" if yes_leg == "yes" else "no_price"] = cents
         if dry_run:
             return {"dry_run": True, "request": body, "status": "simulated", "permit_id": permit.id if permit else None}
         code, payload = self.auth_post(self.order_path, body)
