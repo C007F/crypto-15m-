@@ -21,12 +21,22 @@ from pathlib import Path
 log = logging.getLogger(__name__)
 
 
-# Step-up schedule. Fill rate at size 1 tells you nothing about size 15, so
-# size rises only after a stage has produced enough orders to judge.
+# No step-up. Staging existed to learn fill rate at each size, but fill rate
+# turned out not to be size-dependent: every fill so far - the bot's ZEC trade
+# and three manual probes - was a single contract, and the rejections are
+# price/timing, not depth. Meanwhile a flat cap of 1 was running a different
+# strategy from the one paper measured, the same mistake as inheriting paper's
+# lessons.
+#
+# Conviction sizing does the work instead: it spends a fraction of the ceiling
+# based on leftover EV and (1 - uncertainty), so ordinary signals still trade
+# small and only a strong, agreed one reaches the top.
+#
+# The ceiling is account-scaled, not copied. Paper ran $1000 a book with a max
+# position near $15, about 1.5%. On $200 that is roughly $3, or 8 contracts at
+# 50c - and six coins at once is then ~9% of the account rather than the 45%
+# a straight copy of paper's 30 would have meant.
 STAGES: tuple[tuple[int, int], ...] = (
-    (1, 50),      # (max_contracts, orders needed before the next stage)
-    (3, 50),
-    (5, 50),
     (8, 0),       # 0 = terminal; raise the cap deliberately, not automatically
 )
 

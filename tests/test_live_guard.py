@@ -16,8 +16,9 @@ class Guard(unittest.TestCase):
         self.now = datetime(2026, 8, 24, 15, 0, tzinfo=timezone.utc)
         self.g.roll_day(self.now, Decimal("200"))
 
-    def test_starts_at_one_contract(self):
-        self.assertEqual(self.g.max_contracts, 1)
+    def test_starts_at_the_account_scaled_ceiling(self):
+        """No staging: conviction sizing decides, the ceiling only caps it."""
+        self.assertEqual(self.g.max_contracts, 8)
 
     def test_kill_file_blocks_immediately(self):
         self.assertEqual(self.g.blocked(Decimal("200")), "")
@@ -40,28 +41,25 @@ class Guard(unittest.TestCase):
         self.assertEqual(self.g.clamp(Decimal("999")),
                          Decimal(self.g.limits.max_contracts_hard))
 
-    def test_stage_advances_only_after_enough_orders(self):
-        need = STAGES[0][1]
-        for _ in range(need - 1):
+    def test_no_staging_the_ceiling_is_constant(self):
+        for _ in range(200):
             self.g.note_order()
-        self.assertEqual(self.g.state.stage, 0)
-        self.g.note_order()
-        self.assertEqual(self.g.state.stage, 1)
+        self.assertEqual(self.g.max_contracts, 8,
+                         "ceiling must not drift with order count")
 
     def test_state_survives_restart(self):
-        for _ in range(STAGES[0][1]):
+        for _ in range(20):
             self.g.note_order()
         again = LiveGuard(self.d / "live.json")
-        self.assertEqual(again.state.stage, 1)
-        self.assertEqual(again.max_contracts, STAGES[1][0])
+        self.assertEqual(again.state.orders_at_stage, 20)
+        self.assertEqual(again.max_contracts, 8)
 
     def test_new_day_resets_loss_but_not_stage(self):
         self.g.record_close(Decimal("-20"))
-        for _ in range(STAGES[0][1]):
+        for _ in range(20):
             self.g.note_order()
         self.g.roll_day(self.now.replace(day=25), Decimal("190"))
         self.assertEqual(self.g.state.realized_today, Decimal("0"))
-        self.assertEqual(self.g.state.stage, 1, "stage must not reset overnight")
 
     def test_limits_are_dollars_not_percentages(self):
         self.assertIsInstance(LiveLimits().daily_loss_usd, Decimal)

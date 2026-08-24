@@ -17,6 +17,7 @@ DATA = ROOT / "data"
 import sys
 sys.path.insert(0, str(ROOT / "src"))
 from crypto15m.assets import ASSETS  # noqa: E402
+from crypto15m.live import STAGES  # noqa: E402
 
 
 def _rows(path: Path) -> list[dict]:
@@ -90,7 +91,8 @@ def build() -> dict:
                      "book_age_ms", "order_ms", "status")} for o in orders[-14:]][::-1],
         "state": {
             "stage": state.get("stage", 0),
-            "max_contracts": [1, 3, 5, 8][min(int(state.get("stage", 0)), 3)],
+            # read the real ceiling rather than a copy of it that can drift
+            "max_contracts": STAGES[min(int(state.get("stage", 0)), len(STAGES)-1)][0],
             "orders_at_stage": state.get("orders_at_stage", 0),
             "realized": state.get("realized_today", "0"),
             "start_equity": state.get("start_equity", "0"),
