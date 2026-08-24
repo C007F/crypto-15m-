@@ -7,11 +7,34 @@ from crypto15m.costs.fees import taker_fee
 from crypto15m.costs.ticks import round_buy_price, tick_size
 
 
-def fill_price(ask: Decimal, slippage_ticks: int) -> Decimal:
-    """Conservative take: lift the ask, plus N ticks of adverse slippage."""
-    px = ask
-    for _ in range(max(slippage_ticks, 0)):
-        px = px + tick_size(px)
+# Cushion in DOLLARS, not ticks. Kalshi's tick is 0.001 below $0.10 and 0.01
+# in the middle band, so "3 ticks" meant a 0.3 cent cushion on a 9 cent
+# contract and 3 cents on a 43 cent one - a 10x difference in exactly the
+# place it matters. Live, every cheap-contract order was crossing by a third
+# of a cent and the market moved past it before the order landed.
+#
+# An absolute cushion also does the right thing economically: 3 cents on a 9
+# cent contract is a third of the stake, so expected_value() - which prices
+# the trade at this crossed limit - simply refuses those. Cheap contracts you
+# cannot chase without destroying the edge get filtered out for free.
+CROSS_CUSHION = Decimal("0.03")
+
+
+def fill_price(ask: Decimal, slippage_ticks: int,
+               cushion: Decimal | None = None) -> Decimal:
+    """Conservative take: lift the ask by a fixed cushion, then round up.
+
+    slippage_ticks is kept for callers that still pass it; it now scales the
+    cushion rather than counting ticks, so 0 means no cushion at all.
+    """
+    if cushion is None:
+        cushion = CROSS_CUSHION
+    steps = max(int(slippage_ticks), 0)
+    if steps == 0:
+        return round_buy_price(ask)
+    px = ask + cushion * (Decimal(steps) / Decimal("3"))
+    if px >= Decimal("1"):
+        px = Decimal("1")
     return round_buy_price(px)
 
 

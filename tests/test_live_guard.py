@@ -241,3 +241,35 @@ class FillReportingIsHonest(unittest.TestCase):
         self.assertIn("got = self._fill(", src)
         self.assertIn("if got:", src)
         self.assertNotIn('self.last_action = f"bought {intent.side} x{permit.max_contracts}"', src)
+
+
+class CrossCushionIsAbsolute(unittest.TestCase):
+    """Tick size collapses 10x below $0.10, so a tick-counted cushion was
+    0.3 cents on a cheap contract and 3 cents on a mid-priced one. Every live
+    cheap-contract order crossed by a third of a cent and was outrun."""
+
+    def test_cushion_is_the_same_in_dollars_at_every_price(self):
+        from decimal import Decimal
+        from crypto15m.costs.edge import fill_price
+        cushions = []
+        for a in ("0.02", "0.085", "0.21", "0.43", "0.61"):
+            ask = Decimal(a)
+            cushions.append(float(fill_price(ask, 3) - ask))
+        # all within a rounding tick of each other, not 10x apart
+        self.assertLess(max(cushions) - min(cushions), 0.011,
+                        f"cushion still varies with price band: {cushions}")
+
+    def test_cheap_contracts_stay_economic_or_get_refused(self):
+        """A 3c cushion on a 9c contract is a third of the stake. EV must
+        price that, so the bot declines rather than chasing."""
+        from decimal import Decimal
+        from crypto15m.costs.edge import expected_value
+        ev_cheap, px, _ = expected_value(p_yes=Decimal("0.20"), side="yes",
+                                         ask=Decimal("0.09"), contracts=Decimal("1"),
+                                         slippage_ticks=3)
+        self.assertGreater(px, Decimal("0.11"), "cushion not applied to cheap asks")
+
+    def test_zero_ticks_means_no_cushion(self):
+        from decimal import Decimal
+        from crypto15m.costs.edge import fill_price
+        self.assertEqual(fill_price(Decimal("0.43"), 0), Decimal("0.43"))
