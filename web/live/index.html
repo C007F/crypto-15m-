@@ -1,5 +1,6 @@
+<meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>LIVE — crypto 15m</title>
+<title>LIVE - crypto 15m</title>
 <style>
   :root{--bg:#080b11;--panel:#0e141d;--line:#1d2634;--ink:#e8eef7;--dim:#8fa3bf;
         --amber:#ffb454;--up:#26d07c;--down:#ff5c5c;--flat:#6b7d99;--red:#ff3b3b}
@@ -31,9 +32,9 @@
   .tape{font-size:11px}
 </style>
 <div class="wrap">
-  <h1>● LIVE — real money</h1>
-  <div class="sub" id="sub">loading…</div>
-  <div class="kill" id="kill">LIVE_KILL is present — trading halted</div>
+  <h1>* LIVE - real money</h1>
+  <div class="sub" id="sub">loading...</div>
+  <div class="kill" id="kill">LIVE_KILL is present - trading halted</div>
 
   <div class="kpis" id="kpis"></div>
 
@@ -41,7 +42,7 @@
   <table><thead><tr><th>Coin</th><th>Attempts</th><th>Fills</th><th>Fill rate</th>
     <th>Exits</th><th>Status</th></tr></thead><tbody id="coins"></tbody></table>
 
-  <h2>Fill rate by book staleness <span class="dim">— does a faster feed help?</span></h2>
+  <h2>Fill rate by book staleness <span class="dim">- does a faster feed help?</span></h2>
   <table><thead><tr><th>Book age</th><th>Orders</th><th>Filled</th><th>Rate</th></tr></thead>
     <tbody id="buckets"></tbody></table>
 
@@ -54,8 +55,8 @@
     <tbody id="tape"></tbody></table>
 </div>
 <script>
-const pct = v => v === null || v === undefined ? "—" : (v*100).toFixed(0) + "%";
-const ms  = v => v ? Math.round(v) + "ms" : "—";
+const pct = v => v === null || v === undefined ? "-" : (v*100).toFixed(0) + "%";
+const ms  = v => v ? Math.round(v) + "ms" : "-";
 
 function kpi(l, v, s, cls) {
   return `<div class="kpi"><div class="l">${l}</div>
@@ -70,14 +71,14 @@ async function tick() {
 
     document.getElementById("kill").style.display = st.killed ? "block" : "none";
     document.getElementById("sub").textContent =
-      `micro only · stage ${st.stage} · max ${st.max_contracts} contract(s) · ` +
+      `micro only | stage ${st.stage} | max ${st.max_contracts} contract(s) | ` +
       `${st.orders_at_stage} orders at this stage`;
 
     const pnl = parseFloat(st.realized || 0);
     document.getElementById("kpis").innerHTML =
       kpi("Fill rate", pct(d.rate), `${d.fills} of ${d.attempts} orders`,
           d.rate > 0.3 ? "up" : d.rate > 0 ? "amber" : "down") +
-      kpi("Realised today", (pnl>=0?"+":"−") + "$" + Math.abs(pnl).toFixed(4),
+      kpi("Realised today", (pnl>=0?"+":"-") + "$" + Math.abs(pnl).toFixed(4),
           "cap $15", pnl >= 0 ? "up" : "down") +
       kpi("Order round trip", ms(d.latency.median), "p90 " + ms(d.latency.p90)) +
       kpi("Max size", st.max_contracts + " contract" + (st.max_contracts>1?"s":""),
@@ -100,7 +101,7 @@ async function tick() {
     document.getElementById("tape").innerHTML = (d.recent||[]).map(o => `
       <tr><td>${(o.ts||"").slice(11,19)}</td><td>${(o.asset||"").toUpperCase()}</td>
       <td>${o.side||""}</td><td>${o.quoted_px||""}</td>
-      <td class="${o.filled?'up':'down'}">${o.filled}</td><td>${o.fill_px||"—"}</td>
+      <td class="${o.filled?'up':'down'}">${o.filled}</td><td>${o.fill_px||"-"}</td>
       <td class="dim">${ms(o.book_age_ms)}</td><td class="dim">${ms(o.order_ms)}</td>
       <td class="dim">${(o.status||"").slice(0,30)}</td></tr>`).join("");
   } catch(e) { /* keep last good frame */ }

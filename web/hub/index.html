@@ -1,3 +1,4 @@
+<meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Chester</title>
 <style>
@@ -40,7 +41,7 @@
 <nav>
   <div class="brand">Chester</div>
   <div class="grp">Trading</div>
-  <a data-p="live/"   class="hot"><span class="dot"></span>Live · real money</a>
+  <a data-p="live/"   class="hot"><span class="dot"></span>Live | real money</a>
   <a data-p="crypto/"><span class="dot"></span>Crypto paper</a>
   <a data-p="beast/"><span class="dot"></span>Grok Beast</a>
   <div class="grp">Markets</div>
@@ -48,7 +49,7 @@
   <div class="grp">Archive</div>
   <a data-p="btc/"><span class="dot"></span>BTC (retired)</a>
   <a data-p="zec/"><span class="dot"></span>ZEC (retired)</a>
-  <div class="foot" id="foot">—</div>
+  <div class="foot" id="foot">-</div>
 </nav>
 <main><iframe id="f" title="dashboard"></iframe></main>
 <script>
@@ -81,7 +82,7 @@
       const pnl = parseFloat(d.state.realized || 0);
       document.getElementById("foot").innerHTML =
         `live: ${d.fills}/${d.attempts} filled<br>` +
-        `today: ${(pnl>=0?"+":"−")}$${Math.abs(pnl).toFixed(4)}<br>` +
+        `today: ${(pnl>=0?"+":"-")}$${Math.abs(pnl).toFixed(4)}<br>` +
         `max ${d.state.max_contracts} contract(s)`;
     } catch (e) {}
   }
