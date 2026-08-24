@@ -38,6 +38,15 @@
         border-radius:4px;margin-bottom:14px;display:none}
   .tape{font-size:11px}
   .two{display:grid;gap:18px;grid-template-columns:repeat(auto-fit,minmax(330px,1fr))}
+  .grid{display:grid;gap:11px;grid-template-columns:repeat(auto-fit,minmax(258px,1fr))}
+  .mk{background:var(--panel);border:1px solid var(--line);border-radius:4px;padding:10px 12px}
+  .mk .h{display:flex;align-items:baseline;gap:8px;margin-bottom:5px}
+  .mk .sym{font-size:15px;font-weight:700;letter-spacing:.06em;color:var(--amber)}
+  .mk .px{font-size:13px}
+  .mk .clk{margin-left:auto;color:var(--dim);font-size:12px}
+  .mk .r{display:flex;justify-content:space-between;font-size:11px;color:var(--dim);
+         padding:2px 0}
+  .mk .r b{color:var(--ink);font-weight:600}
 </style>
 <div class="wrap">
   <h1>* LIVE - real money</h1>
@@ -48,6 +57,9 @@
   <div class="kill" id="kill">LIVE_KILL present - trading halted</div>
 
   <div class="kpis" id="kpis"></div>
+
+  <h2>Markets <span class="dim">- what each trader is watching right now</span></h2>
+  <div class="grid" id="markets"></div>
 
   <h2>Live vs shadow <span class="dim">- same signals, same tick, perfect fills</span></h2>
   <div class="note" style="margin-bottom:9px">The shadow book runs the identical strategy
@@ -126,6 +138,24 @@ async function tick() {
         <td class="${c.fills?'PROFIT':'dim'}">${c.fills}</td>
         <td class="dim">${c.attempts}</td>
         <td class="dim">${c.running ? "running" : "STALE"}</td></tr>`).join("");
+
+    const px = v => v === null || v === undefined ? "-" :
+      (Math.abs(v) >= 100 ? v.toLocaleString(undefined,{maximumFractionDigits:2})
+       : Math.abs(v) >= 1 ? v.toFixed(4) : v.toFixed(6));
+    document.getElementById("markets").innerHTML = (d.coins||[]).map(c => `
+      <div class="mk ${c.running?'live':''}">
+        <div class="h"><span class="sym"><span class="dot"></span>${c.label}</span>
+          <span class="px">${px(c.spot)}</span>
+          <span class="clk">${c.clock||"-"}</span></div>
+        <div class="r"><span>strike</span><b>${px(c.strike)}</b></div>
+        <div class="r"><span>distance</span>
+          <b class="${c.dist_bps>0?'PROFIT':c.dist_bps<0?'LOSS':''}">${
+            c.dist_bps==null?"-":(c.dist_bps>0?"+":"")+c.dist_bps.toFixed(1)+" bps"}</b></div>
+        <div class="r"><span>book</span><b>${c.yes_bid==null?"-":
+            c.yes_bid.toFixed(2)+" / "+c.yes_ask.toFixed(2)}</b></div>
+        <div class="r"><span>micro P(yes)</span><b>${c.p_yes==null?"-":c.p_yes.toFixed(3)}
+          <span class="dim">u ${c.uncertainty==null?"-":c.uncertainty.toFixed(2)}</span></b></div>
+      </div>`).join("");
 
     document.getElementById("buckets").innerHTML = (d.buckets||[]).map(b => `
       <tr><td>${b.k}</td><td>${b.n}</td><td class="${b.f?'PROFIT':'dim'}">${b.f}</td>

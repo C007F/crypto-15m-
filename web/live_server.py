@@ -121,6 +121,14 @@ def build() -> dict:
             line = log.read_text(encoding="utf-8", errors="ignore").splitlines()[-1][:150]
         except (OSError, IndexError):
             pass
+
+        # live market state, same fields the paper board shows per coin
+        mkt = {}
+        try:
+            mkt = (json.loads((d / "status.json").read_text(encoding="utf-8"))
+                   .get("market") or {})
+        except (OSError, json.JSONDecodeError):
+            mkt = {}
         pr = pnl_by.get(key, {"wins": 0, "losses": 0, "pnl": 0.0})
         sh = shadow_by.get(key, {"pnl": 0.0, "trades": 0, "open": 0})
         closed = pr["wins"] + pr["losses"]
@@ -132,6 +140,15 @@ def build() -> dict:
             "wins": pr["wins"], "losses": pr["losses"], "closed": closed,
             "win_rate": (pr["wins"] / closed) if closed else None,
             "pnl": round(pr["pnl"], 4),
+            "ticker": mkt.get("ticker", ""),
+            "clock": mkt.get("clock", "-"),
+            "spot": mkt.get("spot"),
+            "strike": mkt.get("strike"),
+            "dist_bps": mkt.get("distance_bps"),
+            "yes_bid": mkt.get("yes_bid"),
+            "yes_ask": mkt.get("yes_ask"),
+            "p_yes": mkt.get("p_yes"),
+            "uncertainty": mkt.get("uncertainty"),
             "shadow_pnl": sh.get("pnl", 0.0),
             "shadow_trades": sh.get("trades", 0),
             "gap": round(round(pr["pnl"], 4) - sh.get("pnl", 0.0), 4),
