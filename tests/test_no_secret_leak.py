@@ -116,3 +116,41 @@ class LivePnlAccounting(unittest.TestCase):
         self.assertIn(("zec", "2026-08-24T20:30:24"), live_server.CORRECTIONS)
         zec = [c for c in self.payload()["coins"] if c["key"] == "zec"][0]
         self.assertGreater(zec["pnl"], -0.5, "still using the pre-fix number")
+
+
+class ShadowComparison(unittest.TestCase):
+    """The shadow book isolates execution cost from signal quality."""
+
+    def payload(self):
+        import sys
+        from pathlib import Path
+        sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "web"))
+        import live_server
+        return live_server.build()
+
+    def test_gap_is_live_minus_shadow(self):
+        d = self.payload()
+        for c in d["coins"]:
+            self.assertAlmostEqual(c["gap"], c["pnl"] - c["shadow_pnl"], places=4)
+        self.assertAlmostEqual(d["gap"], d["pnl"] - d["shadow_pnl"], places=4)
+
+    def test_shadow_runs_in_the_live_process_not_as_extra_traders(self):
+        """Six more polling processes would rate-limit the live ones, and a
+        429 arriving when a cut needs placing is the failure that inverts the
+        strategy."""
+        from pathlib import Path
+        src = (Path(__file__).resolve().parents[1] / "src/crypto15m/bot.py").read_text()
+        self.assertIn("self.shadow = TrialBook(", src)
+        self.assertIn("self.shadow.step(", src)
+        self.assertIn("live=False", src.split("self.shadow.step(")[1][:200])
+
+    def test_shadow_never_places_an_order(self):
+        from pathlib import Path
+        src = (Path(__file__).resolve().parents[1] / "src/crypto15m/bot.py").read_text()
+        call = src.split("self.shadow.step(")[1][:220]
+        self.assertIn("live=False", call, "shadow must never trade for real")
+
+    def test_shadow_writes_to_its_own_directory(self):
+        from pathlib import Path
+        src = (Path(__file__).resolve().parents[1] / "src/crypto15m/bot.py").read_text()
+        self.assertIn('settings.data_dir / "shadow"', src)

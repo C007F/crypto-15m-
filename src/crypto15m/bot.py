@@ -61,6 +61,23 @@ class Mind:
         self.books = [TrialBook(spec, settings, coach=self.coach,
                                 guard=self.guard, fills=self.fills)
                       for spec in specs]
+
+        # Shadow book: the same micro strategy, fed the identical frames in the
+        # same process, but paper-filled at the quoted price. Running it here
+        # rather than as six more processes avoids rate-limiting the live
+        # traders, and guarantees the signals are byte-identical rather than
+        # merely similar.
+        #
+        # The difference between shadow and live IS the execution cost. Nothing
+        # else varies: same book, same tick, same decision.
+        self.shadow = None
+        if live:
+            import dataclasses
+            shadow_dir = settings.data_dir / "shadow"
+            shadow_dir.mkdir(parents=True, exist_ok=True)
+            sset = dataclasses.replace(settings, data_dir=shadow_dir)
+            spec = next(b for b in BOOKS if b.book_id == "micro")
+            self.shadow = TrialBook(spec, sset, coach=Coach(shadow_dir / "lessons.jsonl"))
         self.spot_candles = CandleStore(settings.asset.spot_product)
         self.ref_candles = CandleStore(settings.asset.ref_product)
         self._candle_ts = 0.0
@@ -213,6 +230,15 @@ class Mind:
                 client=self.client,
             )
             notes.append(f"{book.spec.book_id}:{n}")
+
+        if self.shadow is not None:
+            try:
+                # dry_run=True: it never places an order, it only books what a
+                # perfect fill would have done.
+                self.shadow.step(now=now, frame=frame, views=views, gated=gated,
+                                 journal=self.journal, live=False, client=self.client)
+            except Exception:
+                log.warning("shadow book step failed", exc_info=True)
 
         line = self._render(frame, gated, " | ".join(notes))
         self._write_status(frame, views, gated, now, line)

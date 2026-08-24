@@ -49,10 +49,15 @@
 
   <div class="kpis" id="kpis"></div>
 
-  <h2>By coin</h2>
+  <h2>Live vs shadow <span class="dim">- same signals, same tick, perfect fills</span></h2>
+  <div class="note" style="margin-bottom:9px">The shadow book runs the identical strategy
+    inside the same process and fills every order at the quoted price. Nothing else differs,
+    so the gap between the two columns is execution cost and nothing else. A large negative
+    gap means the signal is real but we cannot reach it.</div>
   <table><thead><tr>
     <th>#</th><th>Coin</th><th>Success</th><th>Won-Lost</th><th>Closed</th>
-    <th>P/L</th><th>Per trade</th><th>Fill rate</th><th>Fills</th><th>Attempts</th><th>Status</th>
+    <th>Live P/L</th><th>Shadow P/L</th><th>Gap</th><th>Shadow trades</th>
+    <th>Fill rate</th><th>Fills</th><th>Attempts</th><th>Status</th>
   </tr></thead><tbody id="coins"></tbody></table>
 
   <div class="two">
@@ -99,7 +104,10 @@ async function tick() {
       kpi("Realised P/L", money(pnl), "cap $15/day", tag(pnl)) +
       kpi("Fill rate", pct(d.rate), `${d.fills} of ${d.attempts} orders`, rateCls(d.rate)) +
       kpi("Round trip", ms(d.latency.median), "p90 " + ms(d.latency.p90)) +
-      kpi("Max size", st.max_contracts, "per asset");
+      kpi("Max size", st.max_contracts, "per asset") +
+      kpi("Shadow P/L", money(d.shadow_pnl), `${d.shadow_trades} perfect-fill trades`,
+          tag(d.shadow_pnl)) +
+      kpi("Execution gap", money(d.gap), "live minus shadow", tag(d.gap));
 
     const rows = (d.coins||[]).slice().sort((a,b) =>
       (b.win_rate ?? -1) - (a.win_rate ?? -1) || b.closed - a.closed || b.fills - a.fills);
@@ -111,7 +119,9 @@ async function tick() {
         <td>${c.wins}-${c.losses}</td>
         <td class="dim">${c.closed}</td>
         <td class="${tag(c.pnl)}">${money(c.pnl)}</td>
-        <td class="${tag(c.pnl)}">${c.closed ? money(c.pnl/c.closed) : "-"}</td>
+        <td class="${tag(c.shadow_pnl)}">${money(c.shadow_pnl)}</td>
+        <td class="${tag(c.gap)}">${money(c.gap)}</td>
+        <td class="dim">${c.shadow_trades}</td>
         <td class="${rateCls(c.rate)}">${pct(c.rate)}</td>
         <td class="${c.fills?'PROFIT':'dim'}">${c.fills}</td>
         <td class="dim">${c.attempts}</td>

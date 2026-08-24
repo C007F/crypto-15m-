@@ -62,6 +62,34 @@ def live_pnl() -> dict[str, dict]:
     return out
 
 
+def shadow_pnl() -> dict[str, dict]:
+    """What the same strategy earned with perfect fills, same ticks.
+
+    Read from each coin's shadow account file rather than a journal: the
+    shadow book is a full TrialBook, so its ledger already holds equity,
+    realised P&L and trade count.
+    """
+    out: dict[str, dict] = {}
+    for d in sorted(DATA.glob("*/shadow/accounts/micro.json")):
+        coin = d.parents[2].name
+        try:
+            b = json.loads(d.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        pf = b.get("portfolio") or {}
+        try:
+            start = float(pf.get("starting_equity") or 0)
+            cash = float(pf.get("cash") or 0)
+            held = sum(float(p["contracts"]) * float(p["avg_price"])
+                       for p in (pf.get("positions") or {}).values())
+            out[coin] = {"pnl": round(cash + held - start, 4),
+                         "trades": int(pf.get("trades_today") or 0),
+                         "open": len(pf.get("positions") or {})}
+        except (TypeError, ValueError, KeyError):
+            continue
+    return out
+
+
 def _rows(path: Path) -> list[dict]:
     try:
         return [json.loads(l) for l in path.read_text(encoding="utf-8").splitlines() if l.strip()]
@@ -71,6 +99,7 @@ def _rows(path: Path) -> list[dict]:
 
 def build() -> dict:
     pnl_by = live_pnl()
+    shadow_by = shadow_pnl()
     coins, orders = [], []
     for key, a in ASSETS.items():
         d = DATA / key
@@ -93,6 +122,7 @@ def build() -> dict:
         except (OSError, IndexError):
             pass
         pr = pnl_by.get(key, {"wins": 0, "losses": 0, "pnl": 0.0})
+        sh = shadow_by.get(key, {"pnl": 0.0, "trades": 0, "open": 0})
         closed = pr["wins"] + pr["losses"]
         coins.append({
             "key": key, "label": a.label, "running": fresh,
@@ -102,6 +132,9 @@ def build() -> dict:
             "wins": pr["wins"], "losses": pr["losses"], "closed": closed,
             "win_rate": (pr["wins"] / closed) if closed else None,
             "pnl": round(pr["pnl"], 4),
+            "shadow_pnl": sh.get("pnl", 0.0),
+            "shadow_trades": sh.get("trades", 0),
+            "gap": round(round(pr["pnl"], 4) - sh.get("pnl", 0.0), 4),
         })
 
     orders.sort(key=lambda r: r.get("ts", ""))
@@ -130,6 +163,9 @@ def build() -> dict:
     return {
         "coins": coins,
         "wins": tot_w, "closed": tot_c,
+        "shadow_pnl": round(sum(c["shadow_pnl"] for c in coins), 4),
+        "shadow_trades": sum(c["shadow_trades"] for c in coins),
+        "gap": round(sum(c["gap"] for c in coins), 4),
         "win_rate": (tot_w / tot_c) if tot_c else None,
         "pnl": round(sum(c["pnl"] for c in coins), 4),
         "attempts": len(entries),
