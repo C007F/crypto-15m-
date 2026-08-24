@@ -80,7 +80,10 @@ class Mind:
 
     def features(self, now: datetime | None = None) -> FeatureFrame | None:
         now = now or datetime.now(timezone.utc)
+        import time as _t
+        _book_t0 = _t.monotonic()
         market = self.client.get_open_market()
+        self._book_read_at = _t.monotonic()
         if market is None:
             return None
         quote = fetch_spot_quote(self.settings.asset.spot_product, self.client.session)
@@ -179,6 +182,12 @@ class Mind:
             book.portfolio.mark(frame.market)
             book.settle_stale(now, frame.market.ticker, self.client.get_market, self.journal)
 
+        # Hand the book-read timestamp to each trial so an order can record
+        # how stale its quote was. Rejections that correlate with staleness
+        # mean the feed is too slow; ones that do not mean the edge is not
+        # reachable at any speed.
+        for _b in self.books:
+            _b._book_read_at = getattr(self, "_book_read_at", None)
         views = self._views(frame)
         gated = gate(views)
         self.journal.log(

@@ -190,6 +190,10 @@ class LiveGuard:
 
 @dataclass
 class FillRecord:
+    # Latency fields are the certificate: they turn "it did not fill" into a
+    # measured cause. book_age_ms is how stale our quote was when we decided;
+    # order_ms is the exchange round trip. If rejections correlate with
+    # book_age_ms the fix is a faster feed, not a wider limit.
     """One order, and what the market actually did with it.
 
     fill rate per asset is the entire point of going live: fill_or_kill means
@@ -206,6 +210,8 @@ class FillRecord:
     status: str
     remaining_sec: float
     p_yes: str
+    book_age_ms: float = 0.0
+    order_ms: float = 0.0
 
     @property
     def filled_all(self) -> bool:
@@ -220,6 +226,34 @@ class FillLog:
     def write(self, rec: FillRecord) -> None:
         with self.path.open("a", encoding="utf-8") as fh:
             fh.write(json.dumps(rec.__dict__) + "\n")
+
+    def latency_report(self) -> str:
+        """Fill rate against book age. The number that decides whether a
+        faster feed would help or whether the edge simply is not reachable."""
+        try:
+            rows = [json.loads(l) for l in
+                    self.path.read_text(encoding="utf-8").splitlines() if l.strip()]
+        except OSError:
+            return "no orders yet"
+        if not rows:
+            return "no orders yet"
+        buckets = {"<100ms": [0, 0], "100-500": [0, 0], "500-1500": [0, 0], ">1500": [0, 0]}
+        for r in rows:
+            age = float(r.get("book_age_ms") or 0)
+            k = ("<100ms" if age < 100 else "100-500" if age < 500
+                 else "500-1500" if age < 1500 else ">1500")
+            buckets[k][0] += 1
+            buckets[k][1] += 1 if int(r.get("filled") or 0) else 0
+        out = [f"{'book age':10}{'orders':>8}{'filled':>8}{'rate':>8}"]
+        for k, (n, f) in buckets.items():
+            if n:
+                out.append(f"{k:10}{n:>8}{f:>8}{f/n:>7.0%}")
+        lat = [float(r.get("order_ms") or 0) for r in rows if r.get("order_ms")]
+        if lat:
+            lat.sort()
+            out.append(f"\norder round trip: median {lat[len(lat)//2]:.0f}ms  "
+                       f"p90 {lat[int(.9*len(lat))]:.0f}ms")
+        return "\n".join(out)
 
     def summary(self) -> str:
         try:

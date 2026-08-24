@@ -467,6 +467,8 @@ class TrialBook:
                 return 0
         price = intent.limit_price
         fee = taker_fee(count, price, market.fee_multiplier)
+        import time as _t
+        _t0 = _t.monotonic()
         resp = client.place_order(
             ticker=market.ticker,
             side=intent.side,
@@ -476,6 +478,13 @@ class TrialBook:
             dry_run=not live,
             yes_leg=yes_leg,
         )
+        _order_ms = (_t.monotonic() - _t0) * 1000.0
+        _book_age_ms = 0.0
+        read_at = getattr(getattr(client, "_mind", None), "_book_read_at", None)
+        if read_at is None:
+            read_at = getattr(self, "_book_read_at", None)
+        if read_at is not None:
+            _book_age_ms = (_t0 - read_at) * 1000.0
         if live and self.fills is not None:
             # fill_or_kill means an unfilled order is the measurement, not an
             # error: it says the stale quote was gone by the time we reached it.
@@ -491,6 +500,8 @@ class TrialBook:
                            or (resp.get("error") or {}).get("code") or "ok"),
                 remaining_sec=round(frame.remaining_sec, 1),
                 p_yes=str(view.p_yes),
+                book_age_ms=round(_book_age_ms, 1),
+                order_ms=round(_order_ms, 1),
             ))
         if live and self.guard is not None:
             self.guard.note_order()
