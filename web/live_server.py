@@ -20,6 +20,48 @@ from crypto15m.assets import ASSETS  # noqa: E402
 from crypto15m.live import STAGES  # noqa: E402
 
 
+# Live trading began here; earlier journal rows are paper and must not be
+# mixed into live P&L.
+LIVE_SINCE = "2026-08-24T18:00"
+
+# One known-bad row. The ZEC settle was booked before the NO cost-basis fix
+# and recorded -0.9410 for a trade that really cost 7.35c. Corrected here
+# rather than rewritten in the journal, so the original stays auditable.
+CORRECTIONS = {("zec", "2026-08-24T20:30:24"): -0.0735}
+
+
+def live_pnl() -> dict[str, dict]:
+    """Realised win/loss per asset, from settle and invalidate events."""
+    import sqlite3
+    out: dict[str, dict] = {}
+    for jp in sorted(DATA.glob("*/journal.sqlite3")):
+        coin = jp.parent.name
+        rec = out.setdefault(coin, {"wins": 0, "losses": 0, "pnl": 0.0})
+        try:
+            c = sqlite3.connect(f"file:{jp}?mode=ro", uri=True, timeout=2)
+            rows = c.execute(
+                "select payload, ts from events where kind in ('settle','invalidate') "
+                "and ts > ? order by ts", (LIVE_SINCE,)).fetchall()
+            c.close()
+        except Exception:
+            continue
+        for payload, ts in rows:
+            try:
+                d = json.loads(payload)
+            except Exception:
+                continue
+            if d.get("book") != "micro" or d.get("pnl") is None:
+                continue
+            try:
+                v = float(d["pnl"])
+            except (TypeError, ValueError):
+                continue
+            v = CORRECTIONS.get((coin, ts[:19]), v)
+            rec["pnl"] += v
+            rec["wins" if v > 0 else "losses"] += 1
+    return out
+
+
 def _rows(path: Path) -> list[dict]:
     try:
         return [json.loads(l) for l in path.read_text(encoding="utf-8").splitlines() if l.strip()]
@@ -28,6 +70,7 @@ def _rows(path: Path) -> list[dict]:
 
 
 def build() -> dict:
+    pnl_by = live_pnl()
     coins, orders = [], []
     for key, a in ASSETS.items():
         d = DATA / key
@@ -49,11 +92,16 @@ def build() -> dict:
             line = log.read_text(encoding="utf-8", errors="ignore").splitlines()[-1][:150]
         except (OSError, IndexError):
             pass
+        pr = pnl_by.get(key, {"wins": 0, "losses": 0, "pnl": 0.0})
+        closed = pr["wins"] + pr["losses"]
         coins.append({
             "key": key, "label": a.label, "running": fresh,
             "attempts": len(entries), "fills": len(got),
             "rate": (len(got) / len(entries)) if entries else None,
             "exits": len(exits), "last": line,
+            "wins": pr["wins"], "losses": pr["losses"], "closed": closed,
+            "win_rate": (pr["wins"] / closed) if closed else None,
+            "pnl": round(pr["pnl"], 4),
         })
 
     orders.sort(key=lambda r: r.get("ts", ""))
@@ -77,8 +125,13 @@ def build() -> dict:
     except (OSError, json.JSONDecodeError):
         pass
 
+    tot_w = sum(c["wins"] for c in coins)
+    tot_c = sum(c["closed"] for c in coins)
     return {
         "coins": coins,
+        "wins": tot_w, "closed": tot_c,
+        "win_rate": (tot_w / tot_c) if tot_c else None,
+        "pnl": round(sum(c["pnl"] for c in coins), 4),
         "attempts": len(entries),
         "fills": len(filled),
         "rate": (len(filled) / len(entries)) if entries else None,

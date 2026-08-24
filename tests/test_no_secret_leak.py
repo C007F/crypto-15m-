@@ -78,3 +78,41 @@ class LiveDashboardIsClean(unittest.TestCase):
         src = (Path(__file__).resolve().parents[1] / "web/live_server.py").read_text()
         for bad in ("kalshi_private", ".env", "KALSHI_API", "api_secret", "load_settings"):
             self.assertNotIn(bad, src, f"live dashboard references {bad}")
+
+
+class LivePnlAccounting(unittest.TestCase):
+    def payload(self):
+        import sys
+        from pathlib import Path
+        sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "web"))
+        import live_server
+        return live_server.build()
+
+    def test_per_asset_pnl_sums_to_the_total(self):
+        d = self.payload()
+        self.assertAlmostEqual(sum(c["pnl"] for c in d["coins"]), d["pnl"], places=4)
+
+    def test_wins_plus_losses_equals_closed(self):
+        for c in self.payload()["coins"]:
+            self.assertEqual(c["closed"], c["wins"] + c["losses"])
+
+    def test_paper_history_is_excluded(self):
+        """Live P&L must not include the 277 paper trades."""
+        import sys
+        from pathlib import Path
+        sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "web"))
+        import live_server
+        self.assertTrue(live_server.LIVE_SINCE.startswith("2026-08-24"))
+        d = self.payload()
+        self.assertLess(d["closed"], 50, "paper trades leaked into live P&L")
+
+    def test_the_known_bad_zec_row_is_corrected(self):
+        """That settle was booked before the NO cost-basis fix and recorded
+        -0.9410 for a trade that really cost 7.35c."""
+        import sys
+        from pathlib import Path
+        sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "web"))
+        import live_server
+        self.assertIn(("zec", "2026-08-24T20:30:24"), live_server.CORRECTIONS)
+        zec = [c for c in self.payload()["coins"] if c["key"] == "zec"][0]
+        self.assertGreater(zec["pnl"], -0.5, "still using the pre-fix number")
