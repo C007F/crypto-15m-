@@ -353,9 +353,14 @@ class TrialBook:
             self.save()
             return self.last_action
 
-        self._fill(frame, intent, permit, now, journal, live, client, view, views)
+        got = self._fill(frame, intent, permit, now, journal, live, client, view, views)
+        # One attempt per window either way: a rejected order still consumed
+        # the opportunity, and retrying into a moving book is how you chase.
         self._spent.add(frame.market.ticker)
-        self.last_action = f"bought {intent.side} x{permit.max_contracts}"
+        if got:
+            self.last_action = f"bought {intent.side} x{got}"
+        elif not str(self.last_action).startswith(("no fill", "order reject", "live cap")):
+            self.last_action = "order did not fill"
         self.save()
         return self.last_action
 
@@ -442,7 +447,14 @@ class TrialBook:
         client,
         view: ExpertView,
         views: list[ExpertView],
-    ) -> None:
+    ) -> int:
+        """Returns contracts actually filled. 0 means nothing was bought.
+
+        The caller used to announce "bought" unconditionally, so a rejected
+        fill_or_kill was logged and shown on the dashboard as a purchase. The
+        money accounting was right - no position was booked - but every human
+        reading the log was told the opposite of what happened.
+        """
         market = frame.market
         yes_leg, yes_px = yes_leg_price(market, intent)
         count = permit.max_contracts
@@ -452,7 +464,7 @@ class TrialBook:
             count = self.guard.clamp(count)
             if count < 1:
                 self.last_action = "live cap allows nothing"
-                return
+                return 0
         price = intent.limit_price
         fee = taker_fee(count, price, market.fee_multiplier)
         resp = client.place_order(
@@ -483,9 +495,11 @@ class TrialBook:
         if live and self.guard is not None:
             self.guard.note_order()
         if live and resp.get("http_status") not in (200, 201, None):
-            journal.log("order_reject", {"book": self.spec.book_id, "resp": str(resp)[:300]}, market.ticker)
-            self.last_action = "order reject"
-            return
+            journal.log("order_reject", {"book": self.spec.book_id,
+                                         "code": (resp.get("error") or {}).get("code"),
+                                         "resp": str(resp)[:300]}, market.ticker)
+            self.last_action = f"order reject: {(resp.get('error') or {}).get('code') or resp.get('http_status')}"
+            return 0
 
         if live:
             # HTTP 200 does NOT mean filled. fill_or_kill returns a perfectly
@@ -502,7 +516,7 @@ class TrialBook:
                              "remaining": resp.get("remaining_count")},
                             market.ticker)
                 self.last_action = "no fill: quote gone"
-                return
+                return 0
             count = Decimal(filled)
             if avg is not None:
                 price = avg
@@ -517,6 +531,7 @@ class TrialBook:
             fee=fee,
             permit=permit,
         )
+        filled_n = int(count)
         self._entries[market.ticker] = {
             "book": self.spec.book_id,
             "ticker": market.ticker,
@@ -544,3 +559,4 @@ class TrialBook:
             },
             market.ticker,
         )
+        return filled_n

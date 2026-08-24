@@ -205,3 +205,39 @@ class LiveLearnsSeparately(unittest.TestCase):
         from crypto15m.learn import Coach
         c = Coach(Path(tempfile.mkdtemp()) / "lessons_live.jsonl")
         self.assertEqual(c.extra_edge("micro"), Decimal("0"))
+
+
+class FillReportingIsHonest(unittest.TestCase):
+    """The first live order was logged as 'bought' when it never filled.
+
+    The money was safe - no position was booked - but the log and the
+    dashboard said the opposite of what happened, which is the kind of bug
+    that makes you trust a number you should not.
+    """
+
+    def test_fill_returns_a_count_not_none(self):
+        from pathlib import Path
+        src = (Path(__file__).resolve().parents[1] / "src/crypto15m/trials.py").read_text()
+        i = src.index("def _fill")
+        head = src[i:i + 600]
+        self.assertIn("-> int:", head, "_fill must report what it filled")
+
+    def test_every_early_return_reports_zero(self):
+        from pathlib import Path
+        src = (Path(__file__).resolve().parents[1] / "src/crypto15m/trials.py").read_text()
+        # slice from _fill to whatever method follows it, whichever that is
+        start = src.index("def _fill")
+        rest = src[start + 10:]
+        end = start + 10 + (rest.index("\n    def ") if "\n    def " in rest else len(rest))
+        body = src[start:end]
+        for bail in ("live cap allows nothing", "no fill: quote gone"):
+            self.assertIn(bail, body, f"{bail!r} missing from _fill")
+            i = body.index(bail)
+            self.assertIn("return 0", body[i:i + 120], f"{bail!r} must return 0")
+
+    def test_caller_does_not_announce_an_unfilled_buy(self):
+        from pathlib import Path
+        src = (Path(__file__).resolve().parents[1] / "src/crypto15m/trials.py").read_text()
+        self.assertIn("got = self._fill(", src)
+        self.assertIn("if got:", src)
+        self.assertNotIn('self.last_action = f"bought {intent.side} x{permit.max_contracts}"', src)
