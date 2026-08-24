@@ -1,0 +1,89 @@
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Chester</title>
+<style>
+  :root{--bg:#080b11;--panel:#0b1119;--line:#1d2634;--ink:#e8eef7;--dim:#8fa3bf;
+        --amber:#ffb454;--up:#26d07c;--red:#ff3b3b}
+  *{box-sizing:border-box}
+  html,body{height:100%;margin:0}
+  body{background:var(--bg);color:var(--ink);display:flex;
+       font:13px/1.45 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+  nav{width:186px;flex:0 0 186px;background:var(--panel);border-right:1px solid var(--line);
+      display:flex;flex-direction:column;height:100vh;position:sticky;top:0}
+  .brand{padding:15px 16px 11px;font-size:11px;letter-spacing:.2em;text-transform:uppercase;
+         color:var(--amber);font-weight:700;border-bottom:1px solid var(--line)}
+  .grp{padding:13px 16px 5px;font-size:9px;letter-spacing:.16em;text-transform:uppercase;
+       color:#55637a}
+  a{display:flex;align-items:center;gap:8px;padding:8px 16px;color:var(--dim);
+    text-decoration:none;font-size:13px;border-left:2px solid transparent;cursor:pointer}
+  a:hover{color:var(--ink);background:#111823}
+  a.on{color:var(--ink);background:#131c28;border-left-color:var(--amber)}
+  a.hot.on{border-left-color:var(--red)}
+  .dot{width:6px;height:6px;border-radius:50%;background:#3a4657;flex:0 0 6px}
+  a.hot .dot{background:var(--red)}
+  a.ok .dot{background:var(--up)}
+  .foot{margin-top:auto;padding:12px 16px;border-top:1px solid var(--line);
+        font-size:10px;color:#55637a;line-height:1.6}
+  main{flex:1;height:100vh}
+  iframe{width:100%;height:100%;border:0;display:block;background:var(--bg)}
+  .bar{display:none}
+  @media (max-width:760px){
+    body{flex-direction:column}
+    nav{width:100%;flex:0 0 auto;height:auto;position:static;flex-direction:row;
+        overflow-x:auto;border-right:0;border-bottom:1px solid var(--line)}
+    .brand,.grp,.foot{display:none}
+    a{border-left:0;border-bottom:2px solid transparent;white-space:nowrap;padding:11px 14px}
+    a.on{border-bottom-color:var(--amber)}
+    a.hot.on{border-bottom-color:var(--red)}
+    main{height:calc(100vh - 43px)}
+  }
+</style>
+<nav>
+  <div class="brand">Chester</div>
+  <div class="grp">Trading</div>
+  <a data-p="live/"   class="hot"><span class="dot"></span>Live · real money</a>
+  <a data-p="crypto/"><span class="dot"></span>Crypto paper</a>
+  <a data-p="beast/"><span class="dot"></span>Grok Beast</a>
+  <div class="grp">Markets</div>
+  <a data-p=""><span class="dot"></span>Desk</a>
+  <div class="grp">Archive</div>
+  <a data-p="btc/"><span class="dot"></span>BTC (retired)</a>
+  <a data-p="zec/"><span class="dot"></span>ZEC (retired)</a>
+  <div class="foot" id="foot">—</div>
+</nav>
+<main><iframe id="f" title="dashboard"></iframe></main>
+<script>
+  const BASE = "/db589b7806aff1205013854472d697e5/";
+  const links = [...document.querySelectorAll("nav a")];
+
+  function go(p, push) {
+    document.getElementById("f").src = BASE + p;
+    links.forEach(a => a.classList.toggle("on", a.dataset.p === p));
+    localStorage.setItem("hubTab", p);
+    if (push) history.replaceState(null, "", "#" + (p || "desk"));
+  }
+  links.forEach(a => a.onclick = () => go(a.dataset.p, true));
+
+  const fromHash = location.hash.slice(1);
+  const start = fromHash === "desk" ? ""
+              : fromHash || localStorage.getItem("hubTab") || "live/";
+  go(start, false);
+
+  // green dot = that backend is answering; red stays red for the live board
+  async function health() {
+    for (const a of links) {
+      try {
+        const r = await fetch(BASE + a.dataset.p, {method:"HEAD", cache:"no-store"});
+        a.classList.toggle("ok", r.ok && !a.classList.contains("hot"));
+      } catch (e) { a.classList.remove("ok"); }
+    }
+    try {
+      const d = await (await fetch(BASE + "live/api/status", {cache:"no-store"})).json();
+      const pnl = parseFloat(d.state.realized || 0);
+      document.getElementById("foot").innerHTML =
+        `live: ${d.fills}/${d.attempts} filled<br>` +
+        `today: ${(pnl>=0?"+":"−")}$${Math.abs(pnl).toFixed(4)}<br>` +
+        `max ${d.state.max_contracts} contract(s)`;
+    } catch (e) {}
+  }
+  health(); setInterval(health, 15000);
+</script>
