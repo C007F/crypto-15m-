@@ -17,7 +17,13 @@ from crypto15m.costs.ticks import round_buy_price, tick_size
 # cent contract is a third of the stake, so expected_value() - which prices
 # the trade at this crossed limit - simply refuses those. Cheap contracts you
 # cannot chase without destroying the edge get filtered out for free.
-CROSS_CUSHION = Decimal("0.03")
+# 5 cents, measured. A 3c cushion filled 0/5 live; a 5c cushion filled 2/2 on
+# the same books minutes apart, including a cheap contract (bid 0.16 against a
+# 0.11 ask, filled at 0.12 - the market moved a cent and the cushion absorbed
+# it). The cushion is a LIMIT, not a price paid: fill_or_kill executes at the
+# best available level, so a wider cushion costs nothing when the book is
+# still and buys a fill when it is not.
+CROSS_CUSHION = Decimal("0.05")
 
 
 def fill_price(ask: Decimal, slippage_ticks: int,

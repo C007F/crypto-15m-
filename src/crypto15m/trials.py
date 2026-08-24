@@ -4,7 +4,7 @@ import logging
 import json
 import os
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from decimal import Decimal
 
 from crypto15m.config import Settings
@@ -223,7 +223,20 @@ class TrialBook:
         if resp.get("http_status") not in (200, 201, None):
             log.error("live close rejected for %s: %s", market.ticker, str(resp)[:200])
             return False
-        closed, _ = parse_fill(resp)
+        closed, close_px = parse_fill(resp)
+        if closed >= 1 and self.fills is not None:
+            # Realised cut cost. Twice in live probing an aggressive exit
+            # filled ~27% below the bid we had just read (0.48 -> 0.33,
+            # 0.10 -> 0.073). Micro's economics assume a 5c cut; if the real
+            # number is 3x that, expectancy falls from +0.111 to +0.030 per
+            # contract. This is the number that decides the strategy, so it
+            # gets logged rather than assumed.
+            self.fills.write(FillRecord(
+                ts=datetime.now(timezone.utc).isoformat(timespec="seconds"),
+                asset=self.settings.asset.key, ticker=market.ticker,
+                side=f"exit_{pos.side}", requested=int(pos.contracts),
+                quoted_px=str(px), filled=closed, fill_px=str(close_px or ""),
+                status="exit_filled", remaining_sec=0.0, p_yes=""))
         if closed < 1:
             log.warning("live close did not fill for %s; position still open",
                         market.ticker)
