@@ -119,8 +119,9 @@ check("sizing starts at 1 and respects the ceiling", _size)
 # ---------------------------------------------------------------- fill honesty
 def _fill_honesty():
     src = Path("src/crypto15m/trials.py").read_text()
-    return ('filled = int(float(order.get("filled_count") or 0))' in src
-            and 'if filled < 1:' in src), "unfilled orders book nothing"
+    return ("filled, avg = parse_fill(resp)" in src
+            and "if filled < 1:" in src
+            and 'journal.log("no_fill"' in src), "unfilled orders book nothing"
 check("HTTP 200 is not treated as filled", _fill_honesty)
 
 def _close_real():
