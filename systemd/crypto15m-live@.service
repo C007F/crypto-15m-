@@ -1,0 +1,19 @@
+[Unit]
+Description=Crypto 15m LIVE (%i) - micro only, real money
+After=network-online.target crypto15m-init.service
+Requires=crypto15m-init.service
+
+[Service]
+Type=simple
+WorkingDirectory=/home/cam/projects/crypto-15m-bot
+Environment=PYTHONUNBUFFERED=1
+Environment=ASSET=%i
+Environment=MODE=live
+ExecStart=/home/cam/projects/crypto-15m-bot/.venv/bin/python -m crypto15m live --i-understand-risk
+StandardOutput=append:/home/cam/projects/crypto-15m-bot/data/%i/live.log
+StandardError=append:/home/cam/projects/crypto-15m-bot/data/%i/live.log
+Restart=on-failure
+RestartSec=15
+
+[Install]
+WantedBy=default.target

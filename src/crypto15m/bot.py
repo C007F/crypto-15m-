@@ -30,7 +30,14 @@ class Mind:
         self.live = live
         self.client = KalshiClient(settings)
         self.journal = Journal(settings.journal_path)
-        self.coach = Coach(settings.data_dir / "lessons.jsonl")
+        # Live keeps its OWN lesson file. Paper's lessons were learned under a
+        # different execution model - fills that always succeeded and cuts that
+        # never reached an exchange - so importing them raises the live bar on
+        # evidence that does not apply. It had micro at an effective 0.14
+        # against the 0.08 that produced the measured edge, which is a
+        # different strategy from the one being tested.
+        self.coach = Coach(settings.data_dir /
+                           ("lessons_live.jsonl" if live else "lessons.jsonl"))
         model_path = settings.data_dir / "models" / "logistic.json"
         self.experts = [
             BaselineExpert(),

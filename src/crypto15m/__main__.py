@@ -93,9 +93,21 @@ def main(argv: list[str] | None = None) -> int:
             print("Refusing live without --i-understand-risk", file=sys.stderr)
             return 2
         live = Mind(settings, live=True)
+        # Same backoff as paper. A 429 must not kill the process and leave
+        # systemd restarting it into the same rate limit while a real position
+        # sits open and unmanaged.
+        offset = (zlib.crc32(settings.asset.key.encode()) % 1000) / 1000.0
+        time.sleep(offset * settings.poll_sec * 3)
+        backoff = 0.0
         while True:
-            print(live.step())
-            time.sleep(settings.poll_sec)
+            try:
+                print(live.step())
+                backoff = 0.0
+            except Exception as exc:
+                backoff = min(60.0, max(2.0, backoff * 2))
+                print(f"LIVE step failed ({type(exc).__name__}: {exc}); "
+                      f"backing off {backoff:.0f}s", flush=True)
+            time.sleep(settings.poll_sec + backoff)
 
     if args.cmd == "status":
         for row in mind.journal.recent():

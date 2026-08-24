@@ -182,3 +182,26 @@ class ExitsMustCross(unittest.TestCase):
         from crypto15m.kalshi.client import KalshiClient
         self.assertEqual(KalshiClient.order_path, "/portfolio/events/orders",
                          "/portfolio/orders is V1 and returns HTTP 410")
+
+
+class LiveLearnsSeparately(unittest.TestCase):
+    """Paper lessons must not raise the live bar.
+
+    Paper's losses were recorded under an execution model where every fill
+    succeeded and cuts never reached an exchange. Importing them put micro's
+    effective threshold at 0.14 against the 0.08 that produced the measured
+    edge - a different strategy from the one under test.
+    """
+
+    def test_live_and_paper_use_different_lesson_files(self):
+        from pathlib import Path
+        src = (Path(__file__).resolve().parents[1] / "src/crypto15m/bot.py").read_text()
+        self.assertIn('"lessons_live.jsonl" if live else "lessons.jsonl"', src)
+
+    def test_a_fresh_coach_does_not_raise_the_bar(self):
+        import tempfile
+        from decimal import Decimal
+        from pathlib import Path
+        from crypto15m.learn import Coach
+        c = Coach(Path(tempfile.mkdtemp()) / "lessons_live.jsonl")
+        self.assertEqual(c.extra_edge("micro"), Decimal("0"))
