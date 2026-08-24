@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import time
 from datetime import datetime, timezone
+from decimal import Decimal
 
 from crypto15m.config import Settings
 from crypto15m.experts.baseline import BaselineExpert
@@ -18,6 +19,8 @@ from crypto15m.perception.candles import CandleStore
 from crypto15m.perception.features import FeatureFrame, build_frame
 from crypto15m.perception.spot_feed import fetch_spot_quote
 from crypto15m.ladder import LadderObserver
+from crypto15m.costs.fees import taker_fee
+from crypto15m.live import FillLog, LiveGuard
 from crypto15m.trials import BOOKS, TrialBook
 
 
@@ -36,7 +39,12 @@ class Mind:
             RegimeExpert(),
             TabularExpert(model_path),
         ]
-        self.books = [TrialBook(spec, settings, coach=self.coach) for spec in BOOKS]
+        # Live-only objects; None in paper so there is no path to them.
+        self.guard = LiveGuard(settings.data_dir / "live_state.json") if live else None
+        self.fills = FillLog(settings.data_dir / "fills.jsonl") if live else None
+        self.books = [TrialBook(spec, settings, coach=self.coach,
+                                guard=self.guard, fills=self.fills)
+                      for spec in BOOKS]
         self.spot_candles = CandleStore(settings.asset.spot_product)
         self.ref_candles = CandleStore(settings.asset.ref_product)
         self._candle_ts = 0.0
@@ -110,6 +118,24 @@ class Mind:
 
     def step(self, now: datetime | None = None) -> str:
         now = now or datetime.now(timezone.utc)
+
+        # Live gates run first, every tick, so the kill file and the daily cap
+        # take effect within one poll rather than at the next window boundary.
+        if self.live and self.guard is not None:
+            eq = self.settings.starting_equity
+            try:
+                bal = self.client.get_balance()
+                eq = Decimal(str(bal.get("balance", 0))) / Decimal("100")
+            except Exception:
+                log.warning("balance fetch failed; using last known", exc_info=True)
+            self.guard.roll_day(now, eq)
+            why = self.guard.blocked(eq)
+            if why:
+                for book in self.books:
+                    if book.portfolio.positions:
+                        book.portfolio.flatten_all(now, taker_fee)
+                self._write_status(None, [], None, now, f"LIVE HALT: {why}")
+                return f"LIVE HALT: {why}"
         frame = self.features(now)
         if frame is None:
             self._write_status(None, [], None, now, "no open market")

@@ -10,6 +10,7 @@ from crypto15m.config import Settings
 from crypto15m.costs.fees import taker_fee
 from crypto15m.domain import Denial, ExpertView, Intent, MarketQuote, Permit
 from crypto15m.learn import Coach, diagnose
+from crypto15m.live import FillLog, FillRecord, LiveGuard
 from crypto15m.perception.features import FeatureFrame
 from crypto15m.policy.decision import decide, should_flatten, yes_leg_price
 from crypto15m.portfolio.paper import PaperPortfolio
@@ -50,10 +51,15 @@ def _money(x: Decimal) -> str:
 
 
 class TrialBook:
-    def __init__(self, spec: BookSpec, settings: Settings, coach: Coach | None = None) -> None:
+    def __init__(self, spec: BookSpec, settings: Settings, coach: Coach | None = None,
+                 guard: LiveGuard | None = None, fills: FillLog | None = None) -> None:
         self.spec = spec
         self.settings = settings
         self.coach = coach
+        # Live-only. None in paper mode, and every use is guarded, so the paper
+        # path cannot accidentally acquire live limits.
+        self.guard = guard
+        self.fills = fills
         self.portfolio = PaperPortfolio(settings.starting_equity)
         # size_mult scales only the per-trade caps. Daily loss, drawdown and
         # exposure limits stay at their settings values, so a bigger book
@@ -362,6 +368,13 @@ class TrialBook:
         market = frame.market
         yes_leg, yes_px = yes_leg_price(market, intent)
         count = permit.max_contracts
+        # Live sizing is the guard's call, never the strategy's. The staged cap
+        # exists because fill rate at size 1 says nothing about size 8.
+        if live and self.guard is not None:
+            count = self.guard.clamp(count)
+            if count < 1:
+                self.last_action = "live cap allows nothing"
+                return
         price = intent.limit_price
         fee = taker_fee(count, price, market.fee_multiplier)
         resp = client.place_order(
@@ -373,6 +386,23 @@ class TrialBook:
             dry_run=not live,
             yes_leg=yes_leg,
         )
+        if live and self.fills is not None:
+            # fill_or_kill means an unfilled order is the measurement, not an
+            # error: it says the stale quote was gone by the time we reached it.
+            order = (resp or {}).get("order") or {}
+            self.fills.write(FillRecord(
+                ts=now.isoformat(timespec="seconds"),
+                asset=self.settings.asset.key, ticker=market.ticker,
+                side=intent.side, requested=int(count),
+                quoted_px=str(price),
+                filled=int(float(order.get("filled_count") or 0)),
+                fill_px=str(order.get("average_fill_price") or ""),
+                status=str(order.get("status") or resp.get("status") or "unknown"),
+                remaining_sec=round(frame.remaining_sec, 1),
+                p_yes=str(view.p_yes),
+            ))
+        if live and self.guard is not None:
+            self.guard.note_order()
         if live and resp.get("http_status") not in (200, 201, None):
             journal.log("order_reject", {"book": self.spec.book_id, "resp": str(resp)[:300]}, market.ticker)
             self.last_action = "order reject"
