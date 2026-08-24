@@ -120,6 +120,9 @@ class KalshiClient:
     def get_market(self, ticker: str) -> MarketQuote:
         return parse_market(self.public_get(f"/markets/{ticker}")["market"])
 
+    # Overridable so livecheck can try the documented path without a code edit.
+    order_path = "/portfolio/orders"
+
     def get_balance(self) -> dict:
         return self.auth_get("/portfolio/balance")
 
@@ -133,21 +136,31 @@ class KalshiClient:
         permit: Permit | None,
         dry_run: bool,
         yes_leg: str,
+        action: str = "buy",
     ) -> dict:
         if not dry_run and permit is None:
             raise RuntimeError("refusing live order without RiskGovernor permit")
+        # UNVERIFIED AGAINST THE LIVE API. This body has only ever been built
+        # for dry runs. Kalshi documents /portfolio/orders with an integer
+        # `count`, an `action` of buy|sell, a `type`, and prices in CENTS as
+        # integers (yes_price / no_price). Run `python -m crypto15m livecheck`
+        # to place one real 1-contract order and confirm the shape before any
+        # automation touches this.
+        cents = int(round(float(price) * 100))
+        cents = max(1, min(99, cents))
         body = {
             "ticker": ticker,
+            "action": action,
             "side": yes_leg,
-            "count": f"{count:.2f}",
-            "price": f"{price:.4f}",
+            "count": int(count),
+            "type": "limit",
             "time_in_force": "fill_or_kill",
-            "self_trade_prevention_type": "taker_at_cross",
             "client_order_id": str(uuid.uuid4()),
         }
+        body["yes_price" if yes_leg == "yes" else "no_price"] = cents
         if dry_run:
             return {"dry_run": True, "request": body, "status": "simulated", "permit_id": permit.id if permit else None}
-        code, payload = self.auth_post("/portfolio/events/orders", body)
+        code, payload = self.auth_post(self.order_path, body)
         payload["http_status"] = code
         payload["request"] = body
         return payload

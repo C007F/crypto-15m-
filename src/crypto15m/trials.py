@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import json
 import os
 from dataclasses import dataclass
@@ -15,6 +16,8 @@ from crypto15m.perception.features import FeatureFrame
 from crypto15m.policy.decision import decide, should_flatten, yes_leg_price
 from crypto15m.portfolio.paper import PaperPortfolio
 from crypto15m.risk.governor import RiskGovernor, RiskLimits
+
+log = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -165,6 +168,36 @@ class TrialBook:
             },
         }
 
+    def _live_close(self, client, market, pos, live: bool) -> bool:
+        """Send a real closing order. Returns False if it did not go through.
+
+        In live mode the paper flatten() only edits our own ledger, so without
+        this the bot books a 5c cut while the real contract rides to
+        settlement and loses the full 40c stake. Micro's entire edge is the
+        difference between those two numbers: +0.11 vs -0.16 per contract.
+        """
+        if not live or client is None:
+            return True
+        px = market.yes_bid if pos.side == "yes" else market.no_bid
+        try:
+            resp = client.place_order(
+                ticker=market.ticker, side=pos.side, count=pos.contracts,
+                price=px, permit=None, dry_run=False, yes_leg=pos.side,
+                action="sell",
+            )
+        except Exception:
+            log.exception("live close failed for %s", market.ticker)
+            return False
+        if resp.get("http_status") not in (200, 201, None):
+            log.error("live close rejected for %s: %s", market.ticker, str(resp)[:200])
+            return False
+        order = (resp or {}).get("order") or {}
+        if int(float(order.get("filled_count") or 0)) < 1:
+            log.warning("live close did not fill for %s; position still open",
+                        market.ticker)
+            return False
+        return True
+
     def _review(self, ticker: str, pnl: Decimal, how: str, result: str = "") -> None:
         # Feed the shared live counter from the ONE place every exit already
         # funnels through. Wiring it at each call site is how the daily cap
@@ -218,6 +251,9 @@ class TrialBook:
                 bid = (q.yes_bid if pos.side == "yes" else q.no_bid) if q else pos.avg_price
                 fee = taker_fee(pos.contracts, bid)
                 before = self.portfolio.realized_pnl_today
+                if not self._live_close(client, q or frame.market, pos, live):
+                    self.last_action = "live close failed; holding"
+                    continue
                 self.portfolio.flatten(now, ticker, bid=bid, fee=fee)
                 self._review(ticker, self.portfolio.realized_pnl_today - before, "flatten")
             self.last_action = f"flatten {halt.value}"
@@ -240,6 +276,10 @@ class TrialBook:
             bid = frame.market.yes_bid if pos.side == "yes" else frame.market.no_bid
             fee = taker_fee(pos.contracts, bid, frame.market.fee_multiplier)
             before = self.portfolio.realized_pnl_today
+            if not self._live_close(client, frame.market, pos, live):
+                self.last_action = "live close failed; still holding"
+                self.save()
+                return self.last_action
             self.portfolio.flatten(now, frame.market.ticker, bid=bid, fee=fee)
             self._review(frame.market.ticker, self.portfolio.realized_pnl_today - before, "flatten")
             if not str(self.last_action).startswith("lesson"):
@@ -413,6 +453,32 @@ class TrialBook:
             journal.log("order_reject", {"book": self.spec.book_id, "resp": str(resp)[:300]}, market.ticker)
             self.last_action = "order reject"
             return
+
+        if live:
+            # HTTP 200 does NOT mean filled. fill_or_kill returns a perfectly
+            # successful response carrying filled_count 0 and status canceled
+            # when the quote moved before we arrived - which is the common
+            # case and the whole reason we are going live. Recording the
+            # requested size here would book a position we do not own, then
+            # manage it, then feed imaginary losses into the daily cap.
+            order = (resp or {}).get("order") or {}
+            filled = int(float(order.get("filled_count") or 0))
+            if filled < 1:
+                journal.log("no_fill",
+                            {"book": self.spec.book_id, "requested": str(count),
+                             "quoted": str(price),
+                             "status": order.get("status") or resp.get("status")},
+                            market.ticker)
+                self.last_action = "no fill: quote gone"
+                return
+            count = Decimal(filled)
+            avg = order.get("average_fill_price")
+            if avg is not None:
+                # Kalshi reports cents; anything above 1 is not a dollar price.
+                a = Decimal(str(avg))
+                price = a / Decimal("100") if a > 1 else a
+            fee = taker_fee(count, price, market.fee_multiplier)
+
         self.portfolio.apply_open(
             now=now,
             ticker=market.ticker,

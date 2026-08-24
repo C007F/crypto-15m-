@@ -16,6 +16,7 @@ def main(argv: list[str] | None = None) -> int:
     sub = parser.add_subparsers(dest="cmd", required=True)
     p_watch = sub.add_parser("watch", help="Print live tape. No orders.")
     p_watch.add_argument("--once", action="store_true")
+    sub.add_parser("livecheck", help="place ONE real 1-contract order and verify the path")
     sub.add_parser("probe", help="One snapshot + expert mix. No orders.")
     sub.add_parser("fit", help="Bootstrap logistic on Coinbase 15m history.")
     sub.add_parser("paper", help="Paper loop — only when Cam says so.")
@@ -59,6 +60,10 @@ def main(argv: list[str] | None = None) -> int:
             if once:
                 return 0
             time.sleep(settings.poll_sec)
+
+    if args.cmd == "livecheck":
+        from crypto15m.livecheck import run as _livecheck
+        return _livecheck(settings)
 
     if args.cmd == "paper":
         # Deterministic per-asset offset keeps five traders from hitting Kalshi
