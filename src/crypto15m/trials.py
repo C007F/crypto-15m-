@@ -166,6 +166,12 @@ class TrialBook:
         }
 
     def _review(self, ticker: str, pnl: Decimal, how: str, result: str = "") -> None:
+        # Feed the shared live counter from the ONE place every exit already
+        # funnels through. Wiring it at each call site is how the daily cap
+        # ends up half-connected; this way a new exit path cannot bypass it.
+        if self.guard is not None:
+            self.guard.record_close(pnl)
+
         """Every closed trade gets a verdict and a note, won or lost.
 
         Reviewing only losses hid the bails: a book that cuts its bad

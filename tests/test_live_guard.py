@@ -89,3 +89,63 @@ class Fills(unittest.TestCase):
                                 fill_px="0.40", status="x", remaining_sec=1.0,
                                 p_yes="0.5"))
         self.assertIn("50%", fl.summary())
+
+
+class SharedAcrossCoins(unittest.TestCase):
+    """Six processes, one account. These are the bugs the review found."""
+
+    def setUp(self):
+        self.root = Path(tempfile.mkdtemp())
+        self.now = datetime(2026, 8, 24, 15, 0, tzinfo=timezone.utc)
+
+    def guard(self):
+        g = LiveGuard(self.root / "live_state.json")
+        g.roll_day(self.now, Decimal("200"))
+        return g
+
+    def test_cap_is_account_wide_not_per_coin(self):
+        """Six coins each losing $3 must trip a $15 account cap, not survive
+        because each thinks it has its own budget."""
+        coins = [self.guard() for _ in range(6)]
+        for g in coins:
+            g.record_close(Decimal("-3"))
+        self.assertIn("daily loss", coins[0].blocked(Decimal("200")))
+
+    def test_one_coin_sees_another_coins_losses(self):
+        a, b = self.guard(), self.guard()
+        a.record_close(Decimal("-16"))
+        self.assertIn("daily loss", b.blocked(Decimal("200")),
+                      "a coin must not keep trading after the account cap fell")
+
+    def test_concurrent_writes_do_not_lose_increments(self):
+        import multiprocessing as mp
+
+        def hit(root, n):
+            g = LiveGuard(Path(root) / "live_state.json")
+            for _ in range(n):
+                g.record_close(Decimal("-0.01"))
+
+        self.guard()
+        procs = [mp.Process(target=hit, args=(str(self.root), 40)) for _ in range(6)]
+        for p in procs: p.start()
+        for p in procs: p.join()
+        final = LiveGuard(self.root / "live_state.json")
+        self.assertEqual(final.state.realized_today, Decimal("-2.40"),
+                         "lost increments: the read-modify-write is not atomic")
+
+    def test_account_kill_stops_every_coin(self):
+        g = self.guard()
+        (self.root / "LIVE_KILL").touch()
+        self.assertIn("LIVE_KILL", g.blocked(Decimal("200")))
+
+    def test_per_coin_kill_stops_only_that_coin(self):
+        g = self.guard()
+        (self.root / "zec").mkdir(parents=True, exist_ok=True)
+        (self.root / "zec" / "LIVE_KILL").touch()
+        self.assertIn("zec", g.blocked(Decimal("200"), asset="zec"))
+        self.assertEqual(g.blocked(Decimal("200"), asset="btc"), "")
+
+    def test_unknown_equity_refuses_to_trade(self):
+        """A failed balance fetch must halt, not fall back to a guess."""
+        g = self.guard()
+        self.assertIn("refusing", g.blocked(None))

@@ -9,8 +9,10 @@ Three hard limits and a kill switch. The tuner has no reference to this module.
 """
 from __future__ import annotations
 
+import fcntl
 import json
 import logging
+import os
 from dataclasses import dataclass, field
 from datetime import date, datetime, timezone
 from decimal import Decimal
@@ -57,12 +59,40 @@ class LiveState:
 
 
 class LiveGuard:
+    """Shared by every coin's process.
+
+    The cap is an ACCOUNT cap. One guard file per asset would have meant six
+    independent $15 caps - $90 a day of real risk while the operator believed
+    the number was $15. State therefore lives at the data root and every
+    read-modify-write takes an exclusive flock, because six processes racing on
+    one JSON file is how a loss counter silently loses increments.
+    """
+
     def __init__(self, path: Path, limits: LiveLimits | None = None) -> None:
         self.path = path
+        # Account-wide kill switch, plus a per-coin one for surgical stops.
         self.kill_path = path.parent / "LIVE_KILL"
         self.limits = limits or LiveLimits()
         self.state = LiveState()
+        self.path.parent.mkdir(parents=True, exist_ok=True)
         self._load()
+
+    def _locked(self):
+        """Exclusive lock on a sidecar; released when the context exits."""
+        import contextlib
+
+        @contextlib.contextmanager
+        def ctx():
+            lock = self.path.with_suffix(".lock")
+            fh = open(lock, "w")
+            try:
+                fcntl.flock(fh, fcntl.LOCK_EX)
+                yield
+            finally:
+                fcntl.flock(fh, fcntl.LOCK_UN)
+                fh.close()
+
+        return ctx()
 
     # ---------------------------------------------------------------- persist
     def _load(self) -> None:
@@ -83,7 +113,11 @@ class LiveGuard:
         )
 
     def save(self) -> None:
-        tmp = self.path.with_suffix(".tmp")
+        with self._locked():
+            self._save_unlocked()
+
+    def _save_unlocked(self) -> None:
+        tmp = self.path.with_suffix(f".{os.getpid()}.tmp")
         tmp.write_text(json.dumps(self.state.to_dict(), indent=2), encoding="utf-8")
         tmp.replace(self.path)
 
@@ -95,6 +129,11 @@ class LiveGuard:
 
     def note_order(self) -> None:
         """Count a placed order and advance the stage when it has earned it."""
+        with self._locked():
+            self._load()
+            self._note_order_unlocked()
+
+    def _note_order_unlocked(self) -> None:
         self.state.orders_at_stage += 1
         _, needed = STAGES[min(self.state.stage, len(STAGES) - 1)]
         if needed and self.state.orders_at_stage >= needed:
@@ -103,26 +142,41 @@ class LiveGuard:
                 self.state.orders_at_stage = 0
                 log.warning("live stage -> %d, max contracts now %d",
                             self.state.stage, self.max_contracts)
-        self.save()
+        self._save_unlocked()
 
     # ------------------------------------------------------------------ gates
     def roll_day(self, now: datetime, equity: Decimal) -> None:
         today = now.date().isoformat()
-        if self.state.day != today:
-            self.state.day = today
-            self.state.start_equity = equity
-            self.state.realized_today = Decimal("0")
-            self.state.halted = ""
-            self.save()
+        with self._locked():
+            self._load()
+            if self.state.day != today:
+                self.state.day = today
+                self.state.start_equity = equity
+                self.state.realized_today = Decimal("0")
+                self.state.halted = ""
+                self._save_unlocked()
 
     def record_close(self, pnl: Decimal) -> None:
-        self.state.realized_today += pnl
-        self.save()
+        """Add a realised result to the shared daily counter.
 
-    def blocked(self, equity: Decimal) -> str:
+        Read-modify-write under the lock: without it, two coins closing at the
+        same instant would each read the old total and one increment would be
+        lost - the counter would drift low exactly when losses cluster.
+        """
+        with self._locked():
+            self._load()
+            self.state.realized_today += pnl
+            self._save_unlocked()
+
+    def blocked(self, equity: Decimal, asset: str | None = None) -> str:
         """Empty string means clear. Any other string is the reason to stop."""
+        self._load()                       # another coin may have hit the cap
         if self.kill_path.exists():
             return "LIVE_KILL file present"
+        if asset and (self.kill_path.parent / asset / "LIVE_KILL").exists():
+            return f"LIVE_KILL for {asset}"
+        if equity is None:
+            return "equity unknown - refusing to trade blind"
         if equity < self.limits.min_equity_usd:
             return f"equity ${equity} under floor ${self.limits.min_equity_usd}"
         if -self.state.realized_today >= self.limits.daily_loss_usd:

@@ -40,7 +40,8 @@ class Mind:
             TabularExpert(model_path),
         ]
         # Live-only objects; None in paper so there is no path to them.
-        self.guard = LiveGuard(settings.data_dir / "live_state.json") if live else None
+        self.guard = (LiveGuard(settings.data_dir.parent / "live_state.json")
+                      if live else None)
         self.fills = FillLog(settings.data_dir / "fills.jsonl") if live else None
         self.books = [TrialBook(spec, settings, coach=self.coach,
                                 guard=self.guard, fills=self.fills)
@@ -122,14 +123,20 @@ class Mind:
         # Live gates run first, every tick, so the kill file and the daily cap
         # take effect within one poll rather than at the next window boundary.
         if self.live and self.guard is not None:
-            eq = self.settings.starting_equity
+            # Fail closed. Falling back to settings.starting_equity meant a
+            # network blip made a $200 account look like $1000 and silently
+            # disabled the equity floor.
+            eq = None
             try:
                 bal = self.client.get_balance()
-                eq = Decimal(str(bal.get("balance", 0))) / Decimal("100")
+                raw = bal.get("balance")
+                if raw is not None:
+                    eq = Decimal(str(raw)) / Decimal("100")   # Kalshi cents
             except Exception:
-                log.warning("balance fetch failed; using last known", exc_info=True)
-            self.guard.roll_day(now, eq)
-            why = self.guard.blocked(eq)
+                log.warning("balance fetch failed", exc_info=True)
+            if eq is not None:
+                self.guard.roll_day(now, eq)
+            why = self.guard.blocked(eq, asset=self.settings.asset.key)
             if why:
                 for book in self.books:
                     if book.portfolio.positions:
