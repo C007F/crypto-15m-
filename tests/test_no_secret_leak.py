@@ -218,3 +218,36 @@ class ReconstructedHistory(unittest.TestCase):
         total = sum(v["pnl"] for v in r.values())
         self.assertLess(abs(total - (-0.8784)), 0.40,
                         "reconstruction has drifted from the account")
+
+
+class DashboardCoverage(unittest.TestCase):
+    """The board must show every configured coin, and mark the excluded ones."""
+
+    def payload(self):
+        import sys
+        from pathlib import Path
+        sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "web"))
+        import live_server
+        return live_server.build()
+
+    def test_every_asset_appears(self):
+        import sys
+        from pathlib import Path
+        sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+        from crypto15m.assets import ASSETS
+        shown = {c["key"] for c in self.payload()["coins"]}
+        missing = set(ASSETS) - shown
+        self.assertFalse(missing, f"coins missing from the board: {missing}")
+
+    def test_excluded_coins_are_flagged(self):
+        for c in self.payload()["coins"]:
+            if c["key"] == "zec":
+                self.assertTrue(c["excluded"], "ZEC must show as excluded")
+            else:
+                self.assertFalse(c["excluded"])
+
+    def test_spread_is_surfaced(self):
+        """Spread predicted the only coin that lost real money."""
+        live = [c for c in self.payload()["coins"] if c["running"]]
+        self.assertTrue(any(c["spread_c"] is not None for c in live),
+                        "no coin is reporting a spread")

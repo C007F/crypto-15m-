@@ -69,7 +69,7 @@
   <table><thead><tr>
     <th>#</th><th>Coin</th><th>Success</th><th>Won-Lost</th><th>Closed</th>
     <th>Live P/L</th><th>Shadow P/L</th><th>Gap</th><th>Shadow trades</th>
-    <th>Fill rate</th><th>Fills</th><th>Attempts</th><th>Status</th>
+    <th>Fill rate</th><th>Fills</th><th>Attempts</th><th>Spread</th><th>Status</th>
   </tr></thead><tbody id="coins"></tbody></table>
 
   <div class="two">
@@ -137,7 +137,10 @@ async function tick() {
         <td class="${rateCls(c.rate)}">${pct(c.rate)}</td>
         <td class="${c.fills?'PROFIT':'dim'}">${c.fills}</td>
         <td class="dim">${c.attempts}</td>
-        <td class="dim">${c.running ? "running" : "STALE"}</td></tr>`).join("");
+        <td class="${c.spread_c==null?'dim':c.spread_c<=1?'PROFIT':c.spread_c<=3?'':'LOSS'}">${
+          c.spread_c==null?"-":c.spread_c.toFixed(1)+"c"}</td>
+        <td class="${c.excluded?'LOSS':'dim'}">${
+          c.excluded ? "excluded" : c.running ? "running" : "STALE"}</td></tr>`).join("");
 
     const px = v => v === null || v === undefined ? "-" :
       (Math.abs(v) >= 100 ? v.toLocaleString(undefined,{maximumFractionDigits:2})
@@ -151,6 +154,9 @@ async function tick() {
         <div class="r"><span>distance</span>
           <b class="${c.dist_bps>0?'PROFIT':c.dist_bps<0?'LOSS':''}">${
             c.dist_bps==null?"-":(c.dist_bps>0?"+":"")+c.dist_bps.toFixed(1)+" bps"}</b></div>
+        <div class="r"><span>spread</span><b class="${
+          c.spread_c==null?'dim':c.spread_c<=1?'PROFIT':c.spread_c<=3?'':'LOSS'}">${
+          c.spread_c==null?"-":c.spread_c.toFixed(1)+"c"}</b></div>
         <div class="r"><span>book</span><b>${c.yes_bid==null?"-":
             c.yes_bid.toFixed(2)+" / "+c.yes_ask.toFixed(2)}</b></div>
         <div class="r"><span>micro P(yes)</span><b>${c.p_yes==null?"-":c.p_yes.toFixed(3)}

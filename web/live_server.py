@@ -18,6 +18,7 @@ import sys
 sys.path.insert(0, str(ROOT / "src"))
 from crypto15m.assets import ASSETS  # noqa: E402
 from crypto15m.live import STAGES  # noqa: E402
+from crypto15m.bot import NO_LIVE_ASSETS  # noqa: E402
 
 
 # Live trading began here; earlier journal rows are paper and must not be
@@ -173,6 +174,12 @@ def build() -> dict:
             "wins": pr["wins"], "losses": pr["losses"], "closed": closed,
             "win_rate": (pr["wins"] / closed) if closed else None,
             "pnl": round(pr["pnl"], 4),
+            "excluded": key in NO_LIVE_ASSETS,
+            # Spread is the single best predictor we have of whether a coin is
+            # tradeable at all: ZEC's 8c lost $1.04 of a $1.05 total while the
+            # 1c coins were flat. Shown live because it moves with the hour.
+            "spread_c": (round((float(mkt["yes_ask"]) - float(mkt["yes_bid"])) * 100, 1)
+                         if mkt.get("yes_ask") and mkt.get("yes_bid") else None),
             "ticker": mkt.get("ticker", ""),
             "clock": mkt.get("clock", "-"),
             "spot": mkt.get("spot"),
