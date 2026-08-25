@@ -357,3 +357,106 @@ class ZecExcludedFromLive(unittest.TestCase):
         """It stays configured so paper and the ladder keep observing it."""
         from crypto15m.assets import ASSETS
         self.assertIn("zec", ASSETS)
+
+
+class TakeProfitWhenTheEdgeIsGone(unittest.TestCase):
+    """Winners rode to settlement even after the market had repriced.
+
+    Micro's edge is a mispricing. Once the book reaches our fair value the
+    edge is fully realised, and holding past it is an unhedged bet at fair
+    value in a market where the next signal might be genuinely mispriced.
+    """
+
+    def market(self, bid, ask):
+        from datetime import datetime, timezone
+        from decimal import Decimal
+        from crypto15m.domain import MarketQuote
+        return MarketQuote(ticker="T", event_ticker="E", strike=Decimal("1"),
+            yes_bid=Decimal(bid), yes_ask=Decimal(ask),
+            no_bid=Decimal(str(1 - float(ask))), no_ask=Decimal(str(1 - float(bid))),
+            yes_ask_size=Decimal("100"), no_ask_size=Decimal("100"),
+            open_time=datetime.now(timezone.utc), close_time=datetime.now(timezone.utc),
+            status="active", volume=Decimal("0"), open_interest=Decimal("0"), result="")
+
+    def view(self, p):
+        from decimal import Decimal
+        from crypto15m.domain import ExpertView
+        return ExpertView(name="micro", p_yes=Decimal(p),
+                          magnitude_bps=Decimal("0"), uncertainty=Decimal("0.4"))
+
+    def test_holds_while_the_market_is_still_cheap(self):
+        from crypto15m.policy.decision import edge_realised
+        self.assertFalse(edge_realised("yes", self.view("0.55"), self.market("0.42", "0.43")))
+
+    def test_exits_once_the_market_reaches_fair_value(self):
+        from crypto15m.policy.decision import edge_realised
+        self.assertTrue(edge_realised("yes", self.view("0.55"), self.market("0.58", "0.59")))
+
+    def test_a_one_cent_blip_does_not_trigger_churn(self):
+        """A round trip costs fees; a tick of noise must not pay for them."""
+        from crypto15m.policy.decision import edge_realised
+        self.assertFalse(edge_realised("yes", self.view("0.55"), self.market("0.56", "0.57")))
+
+    def test_no_side_is_symmetric(self):
+        from crypto15m.policy.decision import edge_realised
+        # holding NO, fair for NO is 1-0.35 = 0.65; market must let us sell there
+        self.assertFalse(edge_realised("no", self.view("0.35"), self.market("0.33", "0.34")))
+        self.assertTrue(edge_realised("no", self.view("0.35"), self.market("0.29", "0.30")))
+
+    def test_both_exit_reasons_are_journalled_distinctly(self):
+        from pathlib import Path
+        src = (Path(__file__).resolve().parents[1] / "src/crypto15m/trials.py").read_text()
+        self.assertIn('"edge_realised" if took_profit else "thesis_flipped"', src)
+
+
+class BankTheProfit(unittest.TestCase):
+    """A 15m contract need not be held to expiry.
+
+    If it drifts our way we can close it, bank the money, free the capital for
+    the next mispricing and lose the exposure to a late reversal. Smaller
+    margins, more of them.
+    """
+
+    def market(self, bid, ask):
+        from datetime import datetime, timezone
+        from decimal import Decimal
+        from crypto15m.domain import MarketQuote
+        return MarketQuote(ticker="T", event_ticker="E", strike=Decimal("1"),
+            yes_bid=Decimal(bid), yes_ask=Decimal(ask),
+            no_bid=Decimal(str(1 - float(ask))), no_ask=Decimal(str(1 - float(bid))),
+            yes_ask_size=Decimal("99"), no_ask_size=Decimal("99"),
+            open_time=datetime.now(timezone.utc), close_time=datetime.now(timezone.utc),
+            status="active", volume=Decimal("0"), open_interest=Decimal("0"), result="")
+
+    def test_a_one_cent_gain_is_not_banked(self):
+        """Kalshi charges a taker fee each way; one cent up is a net loss."""
+        from decimal import Decimal
+        from crypto15m.policy.decision import bankable
+        self.assertFalse(bankable("yes", Decimal("0.40"), Decimal("5"),
+                                  self.market("0.41", "0.42")))
+
+    def test_a_real_gain_is_banked(self):
+        from decimal import Decimal
+        from crypto15m.policy.decision import bankable
+        self.assertTrue(bankable("yes", Decimal("0.40"), Decimal("5"),
+                                 self.market("0.48", "0.49")))
+
+    def test_a_losing_position_is_never_banked(self):
+        from decimal import Decimal
+        from crypto15m.policy.decision import bankable
+        self.assertFalse(bankable("yes", Decimal("0.40"), Decimal("5"),
+                                  self.market("0.30", "0.31")))
+
+    def test_no_side_is_symmetric(self):
+        from decimal import Decimal
+        from crypto15m.policy.decision import bankable
+        # NO bought at 0.40 -> closes by buying YES back; profits as yes_ask falls
+        self.assertTrue(bankable("no", Decimal("0.40"), Decimal("5"),
+                                 self.market("0.50", "0.52")))
+        self.assertFalse(bankable("no", Decimal("0.40"), Decimal("5"),
+                                  self.market("0.58", "0.59")))
+
+    def test_it_is_checked_before_holding_to_expiry(self):
+        from pathlib import Path
+        src = (Path(__file__).resolve().parents[1] / "src/crypto15m/trials.py").read_text()
+        self.assertIn("bankable(pos.side, pos.avg_price, pos.contracts", src)

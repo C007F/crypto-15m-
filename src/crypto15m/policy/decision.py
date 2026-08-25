@@ -4,6 +4,7 @@ from decimal import ROUND_DOWN, Decimal
 
 from crypto15m.config import Settings
 from crypto15m.costs.edge import pick_side
+from crypto15m.costs.fees import taker_fee
 from crypto15m.costs.ticks import round_buy_price, yes_sell_price_for_no_buy
 from crypto15m.domain import ExpertView, Intent, MarketQuote, Side
 from crypto15m.perception.features import FeatureFrame
@@ -69,6 +70,53 @@ def decide(
         reason=report.reason,
         window_ticker=features.market.ticker,
     )
+
+
+def bankable(side: Side, entry_px: Decimal, contracts: Decimal,
+             market: MarketQuote, min_net: Decimal = Decimal("0.02")) -> bool:
+    """True when we could close right now for a real profit after both fees.
+
+    A 15-minute contract does not have to be held to expiry. If it drifts our
+    way we can bank it and free the capital for the next mispricing. Smaller
+    wins, far more of them, and no exposure to a late reversal.
+
+    The floor matters: Kalshi charges a taker fee each way, so closing one
+    cent up is a net loss. min_net is profit per contract AFTER both fees.
+    """
+    if contracts <= 0:
+        return False
+    if side == "yes":
+        proceeds = market.yes_bid                 # sell YES into the bid
+    else:
+        proceeds = Decimal("1") - market.yes_ask  # buy YES back at the ask
+    if proceeds <= 0:
+        return False
+    gross = (proceeds - entry_px) * contracts
+    fees = taker_fee(contracts, entry_px) + taker_fee(contracts, proceeds)
+    return (gross - fees) >= min_net * contracts
+
+
+def edge_realised(side: Side, view: ExpertView, market: MarketQuote,
+                  min_ticks: int = 2) -> bool:
+    """True when the market has caught up to our fair value.
+
+    Micro's edge is a mispricing, not a prediction. We buy at 0.40 believing
+    fair is 0.55; when the book moves to 0.55 that edge has been fully
+    realised, and holding past it is an unhedged bet at fair value - pure
+    variance, in a market where the next signal might be genuinely mispriced.
+
+    So: exit once we can SELL at or above what we think the contract is worth.
+    min_ticks keeps a one-cent blip from triggering a round trip that costs
+    more in fees than it books.
+    """
+    fair = Decimal(str(view.p_yes))
+    edge_gone = Decimal(min_ticks) / Decimal("100")
+    if side == "yes":
+        # we exit by selling YES into the bid
+        return market.yes_bid >= fair + edge_gone
+    # a NO position exits by buying YES back at the ask; it is worth
+    # (1 - fair) to us, and we can close it for (1 - yes_ask)
+    return (Decimal("1") - market.yes_ask) >= (Decimal("1") - fair) + edge_gone
 
 
 def should_flatten(side: Side, view: ExpertView, remaining_sec: float, cutoff_sec: int) -> bool:

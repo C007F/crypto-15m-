@@ -14,7 +14,8 @@ from crypto15m.kalshi.client import parse_fill
 from crypto15m.learn import Coach, diagnose
 from crypto15m.live import FillLog, FillRecord, LiveGuard
 from crypto15m.perception.features import FeatureFrame
-from crypto15m.policy.decision import decide, should_flatten, yes_leg_price
+from crypto15m.policy.decision import (bankable, decide, edge_realised,
+                                       should_flatten, yes_leg_price)
 from crypto15m.portfolio.paper import PaperPortfolio
 from crypto15m.risk.governor import RiskGovernor, RiskLimits
 
@@ -332,7 +333,20 @@ class TrialBook:
             return self.last_action
 
         pos = self.portfolio.positions.get(frame.market.ticker)
-        if pos and should_flatten(pos.side, view, frame.remaining_sec, self.settings.entry_cutoff_sec):
+        # Two reasons to close: the thesis broke, or it worked. The second was
+        # missing entirely - winners rode to settlement even after the market
+        # had already repriced to our fair value, which is variance not edge.
+        # Bank a winner as soon as it clears both fees, or when the market has
+        # caught up to our fair value - whichever comes first. A 15m contract
+        # need not be held to expiry: taking the money frees capital for the
+        # next mispricing and removes exposure to a late reversal.
+        took_profit = bool(pos) and (
+            bankable(pos.side, pos.avg_price, pos.contracts, frame.market,
+                     Decimal(str(getattr(self.settings.params, "take_profit_net", 0.03))))
+            or edge_realised(pos.side, view, frame.market))
+        if pos and (took_profit or
+                    should_flatten(pos.side, view, frame.remaining_sec,
+                                   self.settings.entry_cutoff_sec)):
             bid = frame.market.yes_bid if pos.side == "yes" else frame.market.no_bid
             fee = taker_fee(pos.contracts, bid, frame.market.fee_multiplier)
             before = self.portfolio.realized_pnl_today
@@ -343,10 +357,11 @@ class TrialBook:
             self.portfolio.flatten(now, frame.market.ticker, bid=bid, fee=fee)
             self._review(frame.market.ticker, self.portfolio.realized_pnl_today - before, "flatten")
             if not str(self.last_action).startswith("lesson"):
-                self.last_action = f"exit {pos.side}"
+                self.last_action = f"{'took profit' if took_profit else 'exit'} {pos.side}"
             pnl_flat = self.portfolio.realized_pnl_today - before
             journal.log("invalidate",
                         {"book": self.spec.book_id, "side": pos.side,
+                         "why": "edge_realised" if took_profit else "thesis_flipped",
                          "p_yes": view.p_yes, "pnl": str(pnl_flat),
                          "won": pnl_flat > 0},
                         frame.market.ticker)
