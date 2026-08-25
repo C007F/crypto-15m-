@@ -24,6 +24,12 @@ from crypto15m.costs.fees import taker_fee
 from crypto15m.live import FillLog, LiveGuard
 from crypto15m.trials import BOOKS, LIVE_BOOKS, TrialBook
 
+# Coins excluded from LIVE trading. ZEC's spread is 8c against 1c on every
+# other coin, measured not assumed, so a 5c edge is gone before the trade
+# starts. It went 0 for 5 live and carried $1.04 of a $1.05 total loss while
+# the other five combined were within a cent of flat.
+NO_LIVE_ASSETS = frozenset({"zec"})
+
 
 class Mind:
     def __init__(self, settings: Settings, *, live: bool = False) -> None:
@@ -58,6 +64,12 @@ class Mind:
         # anyone should be able to make by forgetting to.
         specs = BOOKS
         if live:
+            if settings.asset.key in NO_LIVE_ASSETS:
+                raise SystemExit(
+                    f"{settings.asset.key} is excluded from live trading: "
+                    f"its spread is 8c against 1c elsewhere, and it lost "
+                    f"$1.04 of a $1.05 total over 5 trades. "
+                    f"Remove it from NO_LIVE_ASSETS to override.")
             specs = tuple(b for b in BOOKS if b.book_id in LIVE_BOOKS)
         self.books = [TrialBook(spec, settings, coach=self.coach,
                                 guard=self.guard, fills=self.fills)

@@ -31,6 +31,11 @@ ASSETS: dict[str, Asset] = {
     "xrp":  Asset("xrp",  "XRP",  "KXXRP15M",  "XRP-USD",  "BTC-USD", "110", 8803),
     "doge": Asset("doge", "DOGE", "KXDOGE15M", "DOGE-USD", "BTC-USD", "80",  8804),
     "sol":  Asset("sol",  "SOL",  "KXSOL15M",  "SOL-USD",  "BTC-USD", "55",  8805),
+    # ZEC is configured but NOT traded live. Its spread is 8c against 1c on
+    # every other coin - measured, not assumed - so a 5c edge is gone before
+    # the trade starts. Live it went 0 for 5 and carried $1.04 of a $1.05
+    # total loss; the other five coins combined were within a cent of flat.
+    # Kept here so paper and the ladder keep observing it.
     "zec":  Asset("zec",  "ZEC",  "KXZEC15M",  "ZEC-USD",  "BTC-USD", "115", 8806),
 }
 

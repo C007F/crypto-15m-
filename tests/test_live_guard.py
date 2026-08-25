@@ -326,3 +326,34 @@ class RetryOnRejection(unittest.TestCase):
                "src/crypto15m/policy/decision.py").read_text()
         self.assertIn("report = pick_side(", dec)
         self.assertIn("if report.side is None:", dec)
+
+
+class ZecExcludedFromLive(unittest.TestCase):
+    """ZEC's spread is 8c against 1c on every other coin.
+
+    A 5c edge is gone before the trade starts. Live it went 0 for 5 and
+    carried $1.04 of a $1.05 total loss; the other five combined were within a
+    cent of flat. Excluded structurally, not by leaving a service unstarted -
+    a stopped service restarts.
+    """
+
+    def test_zec_is_on_the_exclusion_list(self):
+        from crypto15m.bot import NO_LIVE_ASSETS
+        self.assertIn("zec", NO_LIVE_ASSETS)
+
+    def test_other_coins_are_not_excluded(self):
+        from crypto15m.bot import NO_LIVE_ASSETS
+        for coin in ("btc", "eth", "xrp", "doge", "sol"):
+            self.assertNotIn(coin, NO_LIVE_ASSETS)
+
+    def test_the_check_runs_before_any_book_is_built(self):
+        from pathlib import Path
+        src = (Path(__file__).resolve().parents[1] / "src/crypto15m/bot.py").read_text()
+        guard = src.index("NO_LIVE_ASSETS:")
+        books = src.index("self.books = [TrialBook(")
+        self.assertLess(guard, books, "exclusion must gate before books exist")
+
+    def test_zec_still_runs_on_paper(self):
+        """It stays configured so paper and the ladder keep observing it."""
+        from crypto15m.assets import ASSETS
+        self.assertIn("zec", ASSETS)
