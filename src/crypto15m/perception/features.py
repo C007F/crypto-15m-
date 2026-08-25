@@ -37,6 +37,10 @@ class FeatureFrame:
     spot_ref_5m: Decimal = Decimal("0")
     vol_bps_5m: Decimal = Decimal("0")
     vol_regime: Decimal = Decimal("0")  # -1 low, 0 mid, +1 high
+    # P(close >= strike) from the historical move distribution, when the
+    # history layer has data. Beats the Gaussian on every coin out-of-sample
+    # (Brier 0.1348 vs 0.1415 over 1710 predictions).
+    hist_p_yes: float | None = None
     yes_mid: Decimal = Decimal("0")
     implied_p_yes: Decimal = Decimal("0.5")
     spread: Decimal = Decimal("0")

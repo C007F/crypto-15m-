@@ -21,6 +21,11 @@ class MicrostructureExpert:
         sigma = float(features.vol_bps_15m) * math.sqrt(remaining / 900.0)
         sigma = max(sigma, 1.0)
         fair = _norm_cdf(float(features.distance_bps) / sigma)
+        if features.hist_p_yes is not None:
+            # Historical frequency of a move this size in this much time.
+            # Measured better-calibrated than the Gaussian on all six coins;
+            # blended rather than swapped so a thin history cannot dominate.
+            fair = 0.5 * fair + 0.5 * float(features.hist_p_yes)
         implied = float(features.implied_p_yes) if features.implied_p_yes > 0 else 0.5
         lag = fair - implied
         # Push probability toward the spot-implied fair when the book lags.

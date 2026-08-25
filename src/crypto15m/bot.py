@@ -16,6 +16,7 @@ from crypto15m.kalshi.client import KalshiClient
 from crypto15m.learn import Coach
 from crypto15m.meta.gate import gate
 from crypto15m.perception.candles import CandleStore
+from crypto15m.perception.history import EmpiricalMoves
 from crypto15m.perception.features import FeatureFrame, build_frame
 from crypto15m.perception.spot_feed import fetch_spot_quote
 from crypto15m.ladder import LadderObserver
@@ -82,6 +83,9 @@ class Mind:
         self.ref_candles = CandleStore(settings.asset.ref_product)
         self._candle_ts = 0.0
         self.ladder = LadderObserver(settings.data_dir)
+        # Built lazily on first use, rebuilt daily. A failed build degrades to
+        # the Gaussian rather than blocking trading.
+        self.history = EmpiricalMoves(settings.asset.spot_product)
         self.vol = settings.default_vol_bps
 
     def _refresh_candles(self) -> None:
@@ -114,6 +118,14 @@ class Mind:
             fallback_vol=self.vol,
         )
         self.vol = frame.vol_bps_15m
+        try:
+            if self.history.stale:
+                self.history.build(self.client.session)
+            p = self.history.p_yes(float(frame.distance_bps), frame.remaining_sec)
+            if p is not None:
+                frame.hist_p_yes = p
+        except Exception:
+            log.warning("history layer failed; gaussian only", exc_info=True)
         return frame
 
     def _views(self, frame: FeatureFrame):
