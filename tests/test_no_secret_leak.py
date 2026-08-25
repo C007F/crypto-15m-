@@ -185,3 +185,36 @@ class ShadowHasItsOwnJournal(unittest.TestCase):
         src = (Path(__file__).resolve().parents[1] / "src/crypto15m/bot.py").read_text()
         call = src.split("self.shadow.step(")[1][:260]
         self.assertNotIn("journal=self.journal", call)
+
+
+class ReconstructedHistory(unittest.TestCase):
+    """Moving LIVE_SINCE must not erase real trades.
+
+    fills.jsonl only ever recorded live orders, so it stayed clean while the
+    journals were mixed. Eleven real trades are rebuilt from it.
+    """
+
+    def server(self):
+        import sys
+        from pathlib import Path
+        sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "web"))
+        import live_server
+        return live_server
+
+    def test_reconstruction_is_loaded(self):
+        r = self.server().reconstructed()
+        self.assertTrue(r, "pre-split history missing")
+        self.assertGreaterEqual(sum(v["wins"] + v["losses"] for v in r.values()), 10)
+
+    def test_it_is_folded_into_the_totals(self):
+        d = self.server().build()
+        self.assertGreaterEqual(d["closed"], 10,
+                                "pre-split trades not reflected in the totals")
+
+    def test_reconstruction_is_within_reach_of_the_account(self):
+        """Fees are recomputed not stored, so exactness is not claimed - but
+        it should be close to the real balance delta."""
+        r = self.server().reconstructed()
+        total = sum(v["pnl"] for v in r.values())
+        self.assertLess(abs(total - (-0.8784)), 0.40,
+                        "reconstruction has drifted from the account")

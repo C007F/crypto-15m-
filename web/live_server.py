@@ -32,6 +32,27 @@ LIVE_SINCE = "2026-08-25T15:00"
 CORRECTIONS = {("zec", "2026-08-24T20:30:24"): -0.0735}
 
 
+def reconstructed() -> dict[str, dict]:
+    """Pre-split live trades, rebuilt from fills.jsonl.
+
+    fills.jsonl only ever recorded live orders, so it stayed clean while the
+    journals were mixed. Each entry is paired to its exit fill, or to the
+    market's settlement when it was held to close, and priced on the side
+    actually held. Fees are recomputed rather than stored, so the total lands
+    within about 17c of the account - real, not exact.
+    """
+    out: dict[str, dict] = {}
+    try:
+        raw = json.loads((DATA / "live_reconstructed.json").read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return out
+    for coin, trades in raw.items():
+        w = sum(1 for t in trades if t["pnl"] > 0)
+        out[coin] = {"wins": w, "losses": len(trades) - w,
+                     "pnl": round(sum(t["pnl"] for t in trades), 4)}
+    return out
+
+
 def live_pnl() -> dict[str, dict]:
     """Realised win/loss per asset, from settle and invalidate events."""
     import sqlite3
@@ -106,6 +127,11 @@ def _rows(path: Path) -> list[dict]:
 
 def build() -> dict:
     pnl_by = live_pnl()
+    # Fold the pre-split history back in, so moving LIVE_SINCE did not quietly
+    # erase eleven real trades.
+    for coin, r in reconstructed().items():
+        cur = pnl_by.setdefault(coin, {"wins": 0, "losses": 0, "pnl": 0.0})
+        cur["wins"] += r["wins"]; cur["losses"] += r["losses"]; cur["pnl"] += r["pnl"]
     shadow_by = shadow_pnl()
     coins, orders = [], []
     for key, a in ASSETS.items():
