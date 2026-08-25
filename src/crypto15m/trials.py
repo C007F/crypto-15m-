@@ -229,6 +229,7 @@ class TrialBook:
                 ticker=market.ticker, side=pos.side, count=pos.contracts,
                 price=px, permit=_close_permit(market.ticker, pos.side, px),
                 dry_run=False, yes_leg=leg,
+                market_exchange_index=getattr(market, "exchange_index", 0),
             )
         except Exception:
             log.exception("live close failed for %s", market.ticker)
@@ -521,6 +522,7 @@ class TrialBook:
             permit=permit,
             dry_run=not live,
             yes_leg=yes_leg,
+            market_exchange_index=getattr(market, "exchange_index", 0),
         )
         _order_ms = (_t.monotonic() - _t0) * 1000.0
         _book_age_ms = 0.0

@@ -41,5 +41,6 @@ def parse_market(raw: dict) -> MarketQuote:
         volume=_dec(raw.get("volume_fp")),
         open_interest=_dec(raw.get("open_interest_fp")),
         result=(raw.get("result") or "").lower(),
+        exchange_index=int(raw.get("exchange_index") or 0),
         fee_multiplier=_dec(raw.get("fee_multiplier"), "1"),
     )

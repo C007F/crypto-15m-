@@ -34,6 +34,9 @@ class MarketQuote:
     volume: Decimal
     open_interest: Decimal
     result: str
+    # Which Kalshi exchange the market lives on. Orders omitting it default to
+    # 0, and the 15m crypto series moved to 2 on 2026-08-25.
+    exchange_index: int = 0
     fee_multiplier: Decimal = Decimal("1")
 
     @property

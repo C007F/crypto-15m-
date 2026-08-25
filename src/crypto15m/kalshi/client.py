@@ -192,6 +192,7 @@ class KalshiClient:
         dry_run: bool,
         yes_leg: str,
         action: str = "buy",
+        market_exchange_index: int | None = None,
     ) -> dict:
         if not dry_run and permit is None:
             raise RuntimeError("refusing live order without RiskGovernor permit")
@@ -208,6 +209,13 @@ class KalshiClient:
             "self_trade_prevention_type": "taker_at_cross",
             "client_order_id": str(uuid.uuid4()),
         }
+        # Kalshi runs multiple exchanges. The 15m crypto series moved from
+        # exchange 0 to exchange 2 overnight on 2026-08-25; orders that omit
+        # the index default to 0 and come back market_not_found even though
+        # the market reads fine. Send the market's own index.
+        xi = getattr(market_exchange_index, "value", market_exchange_index)
+        if xi is not None:
+            body["exchange_index"] = int(xi)
         if dry_run:
             return {"dry_run": True, "request": body, "status": "simulated", "permit_id": permit.id if permit else None}
         code, payload = self.auth_post(self.order_path, body)
