@@ -205,7 +205,13 @@ class KalshiClient:
             "side": yes_leg,
             "count": f"{Decimal(count):.2f}",
             "price": f"{Decimal(price):.4f}",
-            "time_in_force": "fill_or_kill",
+            # immediate_or_cancel, not fill_or_kill. Conviction sizing asks for
+            # up to 8 contracts while depth is routinely 2 - SOL and DOGE both
+            # showed 2 resting - and all-or-nothing threw the whole order away
+            # rather than taking what was there. A partial fill is the same
+            # edge on fewer contracts, which is strictly better than none, and
+            # the accounting already sizes from the filled count.
+            "time_in_force": "immediate_or_cancel",
             "self_trade_prevention_type": "taker_at_cross",
             "client_order_id": str(uuid.uuid4()),
         }

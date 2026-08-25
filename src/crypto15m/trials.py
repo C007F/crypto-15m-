@@ -216,8 +216,8 @@ class TrialBook:
         # live: two closes priced at the quote were rejected with
         # fill_or_kill_insufficient_resting_volume because the market moved
         # between fetching the quote and the order landing - BTC ran 0.78 to
-        # 0.90 in under a minute. fill_or_kill executes at the BEST AVAILABLE
-        # price, not at the limit (an entry limited to 0.22 filled at 0.86), so
+        # 0.90 in under a minute. immediate_or_cancel executes at the BEST
+        # AVAILABLE price, not at the limit (an entry limited to 0.22 filled at 0.86), so
         # crossing hard costs nothing and is the difference between a 5c cut
         # and riding a loser to settlement for the full stake.
         if pos.side == "yes":
@@ -532,8 +532,7 @@ class TrialBook:
         if read_at is not None:
             _book_age_ms = (_t0 - read_at) * 1000.0
         if live and self.fills is not None:
-            # fill_or_kill means an unfilled order is the measurement, not an
-            # error: it says the stale quote was gone by the time we reached it.
+            # an unfilled order is the measurement, not an error: it says the stale quote was gone by the time we reached it.
             got, got_px = parse_fill(resp)
             self.fills.write(FillRecord(
                 ts=now.isoformat(timespec="seconds"),
