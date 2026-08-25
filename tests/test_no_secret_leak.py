@@ -102,7 +102,9 @@ class LivePnlAccounting(unittest.TestCase):
         from pathlib import Path
         sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "web"))
         import live_server
-        self.assertTrue(live_server.LIVE_SINCE.startswith("2026-08-24"))
+        # The cutoff moved when the shadow got its own journal; before that
+        # the two books shared a ledger and their trades cannot be separated.
+        self.assertGreaterEqual(live_server.LIVE_SINCE, "2026-08-24")
         d = self.payload()
         self.assertLess(d["closed"], 50, "paper trades leaked into live P&L")
 
@@ -162,3 +164,24 @@ class ShadowComparison(unittest.TestCase):
         from pathlib import Path
         src = (Path(__file__).resolve().parents[1] / "src/crypto15m/bot.py").read_text()
         self.assertIn('settings.data_dir / "shadow"', src)
+
+
+class ShadowHasItsOwnJournal(unittest.TestCase):
+    """Sharing one journal made shadow trades read as live ones.
+
+    XRP showed 6-0 on a single real fill because thirteen shadow fills were
+    being counted as live. A comparison is worthless if both sides write to
+    the same ledger.
+    """
+
+    def test_shadow_writes_to_a_separate_journal(self):
+        from pathlib import Path
+        src = (Path(__file__).resolve().parents[1] / "src/crypto15m/bot.py").read_text()
+        self.assertIn('self.shadow_journal = Journal(shadow_dir / "journal.sqlite3")', src)
+        self.assertIn("journal=self.shadow_journal", src)
+
+    def test_live_step_does_not_pass_the_live_journal_to_the_shadow(self):
+        from pathlib import Path
+        src = (Path(__file__).resolve().parents[1] / "src/crypto15m/bot.py").read_text()
+        call = src.split("self.shadow.step(")[1][:260]
+        self.assertNotIn("journal=self.journal", call)

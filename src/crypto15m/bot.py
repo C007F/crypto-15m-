@@ -79,6 +79,12 @@ class Mind:
             sset = dataclasses.replace(settings, data_dir=shadow_dir)
             spec = next(b for b in BOOKS if b.book_id == "micro")
             self.shadow = TrialBook(spec, sset, coach=Coach(shadow_dir / "lessons.jsonl"))
+            # Its OWN journal. Sharing the live one made shadow trades
+            # indistinguishable from real ones - XRP showed 6-0 on a single
+            # live fill because thirteen shadow fills were being counted as
+            # live. The comparison is worthless if both sides write to the
+            # same ledger.
+            self.shadow_journal = Journal(shadow_dir / "journal.sqlite3")
         self.spot_candles = CandleStore(settings.asset.spot_product)
         self.ref_candles = CandleStore(settings.asset.ref_product)
         self._candle_ts = 0.0
@@ -248,7 +254,8 @@ class Mind:
                 # dry_run=True: it never places an order, it only books what a
                 # perfect fill would have done.
                 self.shadow.step(now=now, frame=frame, views=views, gated=gated,
-                                 journal=self.journal, live=False, client=self.client)
+                                 journal=self.shadow_journal, live=False,
+                                 client=self.client)
             except Exception:
                 log.warning("shadow book step failed", exc_info=True)
 

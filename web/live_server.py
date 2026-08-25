@@ -22,7 +22,9 @@ from crypto15m.live import STAGES  # noqa: E402
 
 # Live trading began here; earlier journal rows are paper and must not be
 # mixed into live P&L.
-LIVE_SINCE = "2026-08-24T18:00"
+# Live P&L starts after the shadow got its own journal. Before this the two
+# books shared a ledger and their trades cannot be told apart.
+LIVE_SINCE = "2026-08-25T15:00"
 
 # One known-bad row. The ZEC settle was booked before the NO cost-basis fix
 # and recorded -0.9410 for a trade that really cost 7.35c. Corrected here
@@ -42,6 +44,9 @@ def live_pnl() -> dict[str, dict]:
             rows = c.execute(
                 "select payload, ts from events where kind in ('settle','invalidate') "
                 "and ts > ? order by ts", (LIVE_SINCE,)).fetchall()
+            # Shadow trades wrote into this journal until the split. They are
+            # not tagged, so anything before the fix is unattributable and is
+            # excluded rather than guessed at.
             c.close()
         except Exception:
             continue
@@ -70,6 +75,8 @@ def shadow_pnl() -> dict[str, dict]:
     realised P&L and trade count.
     """
     out: dict[str, dict] = {}
+    # Account files are cumulative from before the split, so shadow P&L is
+    # taken from the same window as live for an apples-to-apples gap.
     for d in sorted(DATA.glob("*/shadow/accounts/micro.json")):
         coin = d.parents[2].name
         try:
