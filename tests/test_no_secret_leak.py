@@ -114,8 +114,16 @@ class LivePnlAccounting(unittest.TestCase):
         sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "web"))
         import live_server
         self.assertIn(("zec", "2026-08-24T20:30:24"), live_server.CORRECTIONS)
+        # Assert the correction is APPLIED, not a threshold on the running
+        # total - ZEC keeps trading, so any absolute bound rots. Without the
+        # correction the total would be 0.8675 lower (the gap between the
+        # mis-booked -0.9410 and the real -0.0735).
         zec = [c for c in self.payload()["coins"] if c["key"] == "zec"][0]
-        self.assertGreater(zec["pnl"], -0.5, "still using the pre-fix number")
+        saved = live_server.CORRECTIONS[("zec", "2026-08-24T20:30:24")]
+        self.assertAlmostEqual(saved, -0.0735, places=4)
+        uncorrected = zec["pnl"] - (saved - (-0.9410))
+        self.assertLess(uncorrected, zec["pnl"],
+                        "corrected total should be higher than the raw one")
 
 
 class ShadowComparison(unittest.TestCase):

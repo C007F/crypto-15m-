@@ -500,6 +500,16 @@ class TrialBook:
                 self.last_action = "live cap allows nothing"
                 return 0
         price = intent.limit_price
+        if not live:
+            # Paper/shadow fills book at the QUOTED ask, not the cushioned
+            # limit. Live FOK fills at the actual best price and the limit is
+            # only headroom, so booking paper at limit charged the shadow ~5c
+            # a trade that no perfect fill would pay - and the shadow's whole
+            # job is to be the perfect-fill benchmark. EV screening still uses
+            # the cushioned price, so paper stays conservative at entry.
+            quoted = market.yes_ask if intent.side == "yes" else market.no_ask
+            if quoted and Decimal("0") < quoted < Decimal("1"):
+                price = quoted
         fee = taker_fee(count, price, market.fee_multiplier)
         import time as _t
         _t0 = _t.monotonic()
