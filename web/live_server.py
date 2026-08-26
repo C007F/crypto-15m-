@@ -245,7 +245,47 @@ def _era(entries, filled) -> dict:
         "all_attempts": len(entries), "all_fills": len(filled),
         "all_rate": (len(filled) / len(entries)) if entries else None,
         "reasons": reasons.most_common(6),
+        "improve_c": _improvement(cur_f),
+        "last_fill_ago": _last_fill_ago(cur_f),
     }
+
+
+def _improvement(filled) -> dict | None:
+    """Cents better (or worse) than the limit we quoted, per contract.
+
+    We send crossing limits with a cushion; the book usually fills better.
+    Positive = we paid less than we were willing to. A drift negative means
+    the cushion is being eaten and the edge math is optimistic.
+    """
+    vals = []
+    for r in filled:
+        try:
+            q = float(r.get("quoted_px") or 0)
+            f = float(r.get("fill_px") or 0)
+        except (TypeError, ValueError):
+            continue
+        if not (0 < q < 1 and 0 < f < 1):
+            continue
+        # both are cost-space for yes; for no the fill is the yes-leg price
+        cost = f if r.get("side") == "yes" else 1 - f
+        vals.append((q - cost) * 100)
+    if not vals:
+        return None
+    vals.sort()
+    return {"median": round(vals[len(vals) // 2], 2),
+            "worst": round(vals[0], 2), "n": len(vals)}
+
+
+def _last_fill_ago(filled) -> int | None:
+    from datetime import datetime, timezone
+    if not filled:
+        return None
+    ts = max(str(r.get("ts")) for r in filled)
+    try:
+        t = datetime.fromisoformat(ts)
+        return int((datetime.now(timezone.utc) - t).total_seconds())
+    except ValueError:
+        return None
 
 
 def build() -> dict:

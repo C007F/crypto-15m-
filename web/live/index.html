@@ -270,8 +270,12 @@ function exec(d){
   let h=[
     ["Fill rate now", pct(e.rate)+` <span class="faint">${e.fills}/${e.attempts}</span>`,
       "orders filled / orders sent since the orderbook pricing fix (2026-08-26 02:39 UTC)"],
-    ["All time", pct(e.all_rate)+` <span class="faint">${e.all_fills}/${e.all_attempts}</span>`,
-      "includes two dead bugs - stale-quote limits that could not cross, and orders sent to the wrong exchange - kept for honesty, not health"],
+    ["Price improvement", e.improve_c==null?"\u2014":
+        `<span class="${e.improve_c.median>=0?"up":"down"}">${e.improve_c.median>=0?"+":""}${e.improve_c.median.toFixed(1)}\u00a2</span> <span class="faint">worst ${e.improve_c.worst.toFixed(1)}\u00a2</span>`,
+      "cents per contract better than the limit we quoted, median across fills. We send crossing limits with a cushion; the book usually fills better. If this drifts negative the cushion is being eaten"],
+    ["Last fill", e.last_fill_ago==null?"\u2014":
+        (e.last_fill_ago<3600?Math.round(e.last_fill_ago/60)+"m ago":(e.last_fill_ago/3600).toFixed(1)+"h ago"),
+      "time since the most recent filled order across all assets"],
     ["Order latency", (l.median==null?"—":l.median+"ms")+` <span class="faint">p90 ${l.p90||"—"}ms</span>`,
       "round trip from sending an order to Kalshi's reply"],
   ].map(([k,v,tip])=>`<div class="kv" data-tip="${tip}"><span class="dim">${k}</span><span>${v}</span></div>`).join("");
