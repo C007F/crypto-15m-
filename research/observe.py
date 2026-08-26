@@ -91,7 +91,8 @@ def main():
                 top = c.orderbook_top(q.ticker)
                 if not top:
                     continue
-                ya, ysz, na, nsz = top
+                ya, ysz = top["yes_ask"], top["yes_ask_size"]
+                na, nsz = top["no_ask"], top["no_ask_size"]
                 spot, dist = spot_distance(spec, q.strike, spot_cache)
                 seen["marks"][str(mark)] = {
                     "ts": now.isoformat(timespec="seconds"),

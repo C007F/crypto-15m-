@@ -24,7 +24,8 @@ def sample(c, series):
         top = c.orderbook_top(stale.ticker)
         if not top:
             continue
-        ya, ysz, na, nsz = top
+        ya, ysz = top["yes_ask"], top["yes_ask_size"]
+        na, nsz = top["no_ask"], top["no_ask_size"]
         if not (0 < ya < 1 and 0 < na < 1):
             continue
         out.append({
