@@ -144,21 +144,10 @@ tr.excluded .dot{background:transparent;border:1px solid var(--faint)}
 </header>
 <div id="err"></div>
 <div class="hero" id="hero"></div>
-<div class="grid two">
-  <div class="card">
-    <h2>Per asset</h2>
-    <div class="scroll"><table id="coins"></table></div>
-    <div class="note" id="coinnote"></div>
-  </div>
-  <div>
-    <div class="card" style="margin-bottom:18px">
-      <h2>Risk</h2><div id="risk"></div>
-    </div>
-    <div class="card" style="margin-bottom:18px">
-      <h2>Execution</h2><div id="exec"></div>
-    </div>
-
-  </div>
+<div class="card">
+  <h2>Per asset</h2>
+  <div class="scroll"><table id="coins"></table></div>
+  <div class="note" id="coinnote"></div>
 </div>
 
 <div class="card" style="margin-top:18px">
@@ -167,6 +156,11 @@ tr.excluded .dot{background:transparent;border:1px solid var(--faint)}
   <div class="note">Every order attempt, newest first, joined to how it ended.
   Misses (○) stay in on purpose — an accepted order that fills nothing is how
   the stale-quote bug showed itself. Blank result = position still open.</div>
+</div>
+
+<div class="grid two" style="margin-top:18px">
+  <div class="card"><h2>Risk</h2><div id="risk"></div></div>
+  <div class="card"><h2>Execution</h2><div id="exec"></div></div>
 </div>
 
 <script>
