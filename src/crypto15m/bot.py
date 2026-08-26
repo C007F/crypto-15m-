@@ -28,7 +28,7 @@ from crypto15m.trials import BOOKS, LIVE_BOOKS, TrialBook
 # other coin, measured not assumed, so a 5c edge is gone before the trade
 # starts. It went 0 for 5 live and carried $1.04 of a $1.05 total loss while
 # the other five combined were within a cent of flat.
-NO_LIVE_ASSETS = frozenset({"zec"})
+NO_LIVE_ASSETS = frozenset({"zec", "near"})
 
 
 class Mind:

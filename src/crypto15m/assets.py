@@ -45,6 +45,9 @@ ASSETS: dict[str, Asset] = {
     # total loss; the other five coins combined were within a cent of flat.
     # Kept here so paper and the ladder keep observing it.
     "zec":  Asset("zec",  "ZEC",  "KXZEC15M",  "ZEC-USD",  "BTC-USD", "115", 8806),
+    # Watch-only until the observer proves its cheap-leg edge covers a 3c
+    # spread (measured; BNB runs 1c, ZEC 6-8c). vol from Coinbase 15m candles.
+    "near": Asset("near", "NEAR", "KXNEAR15M", "NEAR-USD", "BTC-USD", "58",  8809),
 }
 
 
