@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 import base64
 import json
 import time
@@ -169,10 +170,50 @@ class KalshiClient:
             return None
         live.sort(key=lambda m: m.close_time)
         self._open_ticker = live[0].ticker
-        return live[0]
+        return self.with_book(live[0])
+
+    def orderbook_top(self, ticker: str) -> tuple | None:
+        """Best crossable ask on each side, from the resting book.
+
+        Kalshi's orderbook is bids-only on both legs. Buying NO fills against
+        resting YES bids, so the ask we actually have to pay is 1 - best_yes_bid
+        and the depth available is that level's size; buying YES is the mirror.
+
+        This exists because the /markets summary quotes drift from the book -
+        measured no_ask 0.68 against a true 0.71 on SOL - and a NO limit built
+        off the stale number lands a cent under the real ask, so the order is
+        accepted and fills nothing. 32 of 35 post-IOC orders died that way.
+
+        Returns (yes_ask, yes_ask_size, no_ask, no_ask_size) or None if the
+        book is unreadable, in which case the caller keeps the summary quote.
+        """
+        try:
+            ob = self.public_get(f"/markets/{ticker}/orderbook",
+                                 params={"depth": 5}).get("orderbook_fp") or {}
+        except Exception:
+            return None
+        yes_bids = ob.get("yes_dollars") or []
+        no_bids = ob.get("no_dollars") or []
+        if not yes_bids or not no_bids:
+            return None
+        # Levels come back ascending; the best bid is the highest price.
+        by = max((Decimal(str(px)), Decimal(str(sz))) for px, sz in yes_bids)
+        bn = max((Decimal(str(px)), Decimal(str(sz))) for px, sz in no_bids)
+        return (Decimal("1") - bn[0], bn[1], Decimal("1") - by[0], by[1])
+
+    def with_book(self, q: MarketQuote) -> MarketQuote:
+        """Overlay true book prices/sizes onto a summary quote."""
+        top = self.orderbook_top(q.ticker)
+        if top is None:
+            return q
+        yes_ask, yes_sz, no_ask, no_sz = top
+        if not (0 < yes_ask < 1) or not (0 < no_ask < 1):
+            return q
+        return replace(q, yes_ask=yes_ask, yes_ask_size=yes_sz,
+                       no_ask=no_ask, no_ask_size=no_sz)
 
     def get_market(self, ticker: str) -> MarketQuote:
-        return parse_market(self.public_get(f"/markets/{ticker}")["market"])
+        return self.with_book(parse_market(self.public_get(f"/markets/{ticker}")["market"]))
 
     # Overridable so livecheck can try the documented path without a code edit.
     # V2. /portfolio/orders is V1 and returns HTTP 410.

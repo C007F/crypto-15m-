@@ -384,7 +384,7 @@ class TrialBook:
         took_profit = bool(pos) and (can_bank or edge_realised(pos.side, view, frame.market))
         if pos and (took_profit or
                     should_flatten(pos.side, view, frame.remaining_sec,
-                                   self.settings.entry_cutoff_sec)):
+                                   self.settings.flatten_cutoff_sec)):
             bid = frame.market.yes_bid if pos.side == "yes" else frame.market.no_bid
             fee = taker_fee(pos.contracts, bid, frame.market.fee_multiplier)
             before = self.portfolio.realized_pnl_today

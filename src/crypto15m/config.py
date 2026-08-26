@@ -36,6 +36,7 @@ class Settings:
     slippage_ticks: int
     entry_start_sec: int
     entry_cutoff_sec: int
+    flatten_cutoff_sec: int
     poll_sec: float
     default_vol_bps: Decimal
     data_dir: Path
@@ -103,6 +104,11 @@ def load_settings() -> Settings:
         slippage_ticks=int(os.getenv("SLIPPAGE_TICKS", "1")),
         entry_start_sec=int(os.getenv("ENTRY_START_SEC", "90")),
         entry_cutoff_sec=int(os.getenv("ENTRY_CUTOFF_SEC", "75")),
+        # Separate from entry: past this point a position rides to settlement
+        # rather than paying the spread to cut. Entries may legally happen
+        # later than this - the liquid zone is the last few minutes - so the
+        # two boundaries are deliberately not the same number.
+        flatten_cutoff_sec=int(os.getenv("FLATTEN_CUTOFF_SEC", "150")),
         poll_sec=float(os.getenv("POLL_SEC", "1.0")),
         default_vol_bps=_dec("DEFAULT_VOL_BPS", asset.vol_bps),
         data_dir=data_dir,
