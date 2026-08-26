@@ -134,7 +134,7 @@ tr.excluded .dot{background:transparent;border:1px solid var(--faint)}
 <header>
   <h1>Chester · Kalshi 15M</h1>
   <span class="tag">Live — Real Money</span>
-  <span class="clock mono" id="clock" data-tip="time left in the current 15m window">—</span>
+  <span class="clock mono" id="clock" data-tip="time elapsed in the current 15m window - counts up from 0:00 at open to 15:00 at expiry; amber inside the final 2:30">—</span>
   <span class="now mono" id="nowct" data-tip="current time, US Central">—</span>
   <span class="when" id="when">…</span>
 </header>
@@ -371,8 +371,10 @@ async function tick(){
 let clockLeft=null;
 function paintClock(){
   const el=$("clock");
-  if(clockLeft==null){el.textContent="—";return;}
-  const m=Math.floor(clockLeft/60), sec=clockLeft%60;
+  if(clockLeft==null){el.textContent="\u2014";return;}
+  // count UP through the window: 0:00 at open, 15:00 at expiry.
+  // amber past 12:30 elapsed (= inside the last 150s, where cuts stop).
+  const up=900-clockLeft, m=Math.floor(up/60), sec=up%60;
   el.textContent=`${m}:${String(sec).padStart(2,"0")}`;
   el.classList.toggle("soon", clockLeft<=150);
 }
