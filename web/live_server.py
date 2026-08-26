@@ -129,6 +129,41 @@ def exchange_truth() -> dict:
     return d
 
 
+_SPREADS: dict = {}   # coin -> deque of (ts, cents)
+
+
+def _sample_spreads() -> dict:
+    """Median spread over the last 5 minutes, plus the instantaneous value.
+
+    The board showed only the instantaneous top-of-book spread, and a
+    two-second thinning at a window rollover made DOGE read 62c - ZEC-grade -
+    when its typical spread is 2c. ZEC's problem was never spikes, it is an
+    8c MEDIAN. Show the median so the persistent and the momentary stop
+    looking alike; the entry gate already refuses spreads over MAX_SPREAD, so
+    spikes are moments the bot sits out, not costs it pays.
+    """
+    from collections import deque
+    import statistics
+    now = time.time()
+    out = {}
+    for f in (DATA / "books").glob("*.json"):
+        try:
+            d = json.loads(f.read_text())
+            ya, na = float(d["yes_ask"]), float(d["no_ask"])
+        except (OSError, ValueError, KeyError, json.JSONDecodeError):
+            continue
+        if not (0 < ya < 1 and 0 < na < 1):
+            continue
+        coin = f.name[2:f.name.find("15M")].lower()
+        cents = (ya + na - 1) * 100
+        dq = _SPREADS.setdefault(coin, deque(maxlen=200))
+        dq.append((now, cents))
+        recent = [c for t, c in dq if now - t < 300]
+        out[coin] = {"now": round(cents, 1),
+                     "med": round(statistics.median(recent), 1) if recent else None}
+    return out
+
+
 def _window_clock() -> dict:
     """Seconds left in the current 15m window. Every asset shares the boundary."""
     now = time.time()
@@ -271,6 +306,7 @@ def build() -> dict:
         "coins": coins,
         "exchange": exchange_truth(),
         "window": _window_clock(),
+        "spreads": _sample_spreads(),
         "attempts_feed": _attempts_feed(orders),
         "era": _era(entries, filled),
         "wins": tot_w, "closed": tot_c,

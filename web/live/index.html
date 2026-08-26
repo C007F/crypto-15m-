@@ -31,7 +31,7 @@ header .clock{font-size:15px;font-weight:600;color:var(--accent);
 header .clock.soon{color:var(--warn);background:#d299221a;border-color:#d2992244}
 
 /* headline numbers */
-.hero{display:grid;grid-template-columns:repeat(5,1fr);
+.hero{display:grid;grid-template-columns:repeat(6,1fr);
   gap:1px;background:var(--line);border:1px solid var(--line);
   border-radius:8px;overflow:hidden;margin-bottom:16px}
 .hero div{background:var(--panel);padding:11px 13px;min-width:0}
@@ -136,19 +136,21 @@ function hero(d){
   const cells=[
     ["Balance", money(x.balance), "from Kalshi"],
     ["Today", money(x.day), (x.settled||0)+" settled · "+(x.winners||0)+" won"],
+    ["All time", money(x.total), "vs $200 deposited"],
     ["Fill rate", pct(e.rate), e.fills+" of "+e.attempts+" since the pricing fix"],
     ["Win rate", pct(x.settled?x.winners/x.settled:null), "breakeven ≈ 12.7% at 8x"],
     ["Open", (x.open==null?"—":x.open), "positions right now"],
   ];
   $("hero").innerHTML=cells.map(([k,v,s],i)=>
     `<div><div class="k">${k}</div>
-     <div class="v ${i===1?cls(x.day):""}">${v}</div>
+     <div class="v ${i===1?cls(x.day):i===2?cls(x.total):""}">${v}</div>
      <div class="sub">${s}</div></div>`).join("");
 }
 
 function coins(d){
   // per-asset P/L from Kalshi settlements, not our journal
   const per=(d.exchange||{}).per_asset||{};
+  const spr=d.spreads||{};
   const rows=(d.coins||[]).slice().map(c=>{
     const e=per[c.key];
     return {...c, asset_pnl: e?e.pnl:null,
@@ -169,13 +171,18 @@ function coins(d){
       <td class="${cls(c.asset_pnl)}">${c.asset_pnl==null?"—":money(c.asset_pnl)}</td>
       <td>${c.fills||0}</td>
       <td><span class="up">${c.s_w??c.wins??0}</span><span class="faint">/</span><span class="dim">${c.s_n??c.closed??0}</span></td>
-      <td class="sm-hide ${c.spread_c>=4?"warn":"dim"}">${c.spread_c==null?"—":c.spread_c.toFixed(1)+"¢"}</td>
+      <td class="sm-hide">${(()=>{const sp=spr[c.key];
+        if(!sp||sp.med==null) return '<span class="dim">—</span>';
+        const spike=sp.now>Math.max(2*sp.med,sp.med+2);
+        return `<span class="${sp.med>=4?"warn":"dim"}">${sp.med.toFixed(1)}¢</span>`
+             + (spike?` <span class="warn" title="momentary: book thinned; gate sits these out">↯${sp.now.toFixed(0)}</span>`:"");
+      })()}</td>
     </tr>`;
   }
   $("coins").innerHTML=h;
-  $("coinnote").textContent="P/L and W/n are settled trades from Kalshi, same source "
-    +"as the headline. Dist is basis points from spot to strike; ask and P(yes) "
-    +"are the window in play right now.";
+  $("coinnote").textContent="P/L and W/n are settled trades from Kalshi. Spread is the "
+    +"5-minute median; \u21af flags a momentary spike (thin book, usually at a "
+    +"window rollover) \u2014 the entry gate sits those out.";
 }
 
 function risk(d){

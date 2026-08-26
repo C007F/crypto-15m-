@@ -24,6 +24,10 @@ def main() -> None:
     try:
         bal = D(c.auth_get("/portfolio/balance")["balance_dollars"])
         out["balance"] = float(bal)
+        # Lifetime P&L = balance minus what was deposited. One $200 deposit,
+        # ever; the client refuses money-movement endpoints so this cannot
+        # drift without a human depositing, at which point update it.
+        out["total"] = float(bal - D("200"))
         try:
             st = json.loads((ROOT / "data" / "live_state.json").read_text())
             out["day"] = float(bal - D(st.get("start_equity") or bal))
