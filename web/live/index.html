@@ -176,8 +176,16 @@ function coins(d){
     return {...c, asset_pnl: e?e.pnl:null,
             s_w: e?e.w:null, s_n: e?e.n:null};
   }).sort((a,b)=>(b.asset_pnl??-1e9)-(a.asset_pnl??-1e9));
-  let h=`<tr><th>Asset</th><th>Window</th><th>Dist</th><th>Ask</th>
-     <th class="sm-hide">P(yes)</th><th>P/L</th><th>Fills</th><th>W/L</th><th class="sm-hide">Spread</th></tr>`;
+  let h=`<tr>
+     <th data-tip="which coin. Green dot = its trader process is running; 'excl' = excluded from live trading">Asset</th>
+     <th data-tip="time left in this coin's current 15-minute window">Window</th>
+     <th data-tip="how far spot is from the strike, in basis points. Positive = above the strike, so YES (over) is currently winning">Dist</th>
+     <th data-tip="current price of the YES side from the live orderbook">Ask</th>
+     <th class="sm-hide" data-tip="our model's probability that YES wins. Edge = this vs the ask">P(yes)</th>
+     <th data-tip="net settled profit for this asset, from Kalshi's records - not our journal">P/L</th>
+     <th data-tip="orders filled on this asset since going live">Fills</th>
+     <th data-tip="settled wins / settled trades, from the exchange">W/L</th>
+     <th class="sm-hide" data-tip="5-minute median spread in cents; \u21af flags a momentary spike the entry gate sits out">Spread</th></tr>`;
   for(const c of rows){
     const dist=c.dist_bps==null?"—":(c.dist_bps>0?"+":"")+c.dist_bps.toFixed(1);
     h+=`<tr>
