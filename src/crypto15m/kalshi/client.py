@@ -230,7 +230,9 @@ class KalshiClient:
         # Levels come back ascending; the best bid is the highest price.
         by = max((Decimal(str(px)), Decimal(str(sz))) for px, sz in yes_bids)
         bn = max((Decimal(str(px)), Decimal(str(sz))) for px, sz in no_bids)
-        return (Decimal("1") - bn[0], bn[1], Decimal("1") - by[0], by[1])
+        return {"yes_ask": Decimal("1") - bn[0], "yes_ask_size": bn[1],
+                "no_ask": Decimal("1") - by[0], "no_ask_size": by[1],
+                "yes_bid": by[0], "no_bid": bn[0]}
 
     # data/books/<ticker>.json, maintained by crypto15m-stream (kalshi/stream.py).
     # A fresh streamed top is better than a REST read: ~25ms old at worst,
@@ -238,13 +240,14 @@ class KalshiClient:
     BOOKS_DIR = Path(__file__).resolve().parents[3] / "data" / "books"
     STREAM_FRESH_SEC = 3.0
 
-    def _streamed_top(self, ticker: str) -> tuple | None:
+    def _streamed_top(self, ticker: str) -> dict | None:
         try:
             d = json.loads((self.BOOKS_DIR / f"{ticker}.json").read_text())
             if time.time() - float(d["ts"]) > self.STREAM_FRESH_SEC:
                 return None
-            return (Decimal(d["yes_ask"]), Decimal(d["yes_ask_size"]),
-                    Decimal(d["no_ask"]), Decimal(d["no_ask_size"]))
+            return {k: Decimal(d[k]) for k in
+                    ("yes_ask", "yes_ask_size", "no_ask", "no_ask_size",
+                     "yes_bid", "no_bid")}
         except (OSError, KeyError, ValueError, json.JSONDecodeError):
             return None
 
@@ -261,11 +264,14 @@ class KalshiClient:
             top = self.orderbook_top(q.ticker)
         if top is None:
             return q
-        yes_ask, yes_sz, no_ask, no_sz = top
-        if not (0 < yes_ask < 1) or not (0 < no_ask < 1):
+        if not (0 < top["yes_ask"] < 1) or not (0 < top["no_ask"] < 1):
             return q
-        return replace(q, yes_ask=yes_ask, yes_ask_size=yes_sz,
-                       no_ask=no_ask, no_ask_size=no_sz)
+        # Replace BOTH sides. Overlaying only the asks left yes_bid from the
+        # stale summary, so spread = yes_ask - yes_bid mixed two clocks and
+        # read ~13c on a 1c book. uncertainty = 0.2 + spread*2 then doubled,
+        # the edge buffer swallowed every signal, and the bot went silent for
+        # two hours while perfectly healthy.
+        return replace(q, **top)
 
     def get_market(self, ticker: str) -> MarketQuote:
         return self.with_book(parse_market(self.public_get(f"/markets/{ticker}")["market"]))
