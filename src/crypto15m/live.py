@@ -36,8 +36,16 @@ log = logging.getLogger(__name__)
 # position near $15, about 1.5%. On $200 that is roughly $3, or 8 contracts at
 # 50c - and six coins at once is then ~9% of the account rather than the 45%
 # a straight copy of paper's 30 would have meant.
+# (max_contracts, filled_orders_needed_to_advance). 0 = terminal.
+# Restored after the orderbook pricing fix: until then limits landed under the
+# true ask and almost nothing crossed, so an 8-contract request was harmless.
+# Now that orders fill, 8 spends the $15 daily cap in three trades - the fewest
+# observations at the moment we most need them. Ramp so the cap reaches 8 with
+# ~20 filled trades of evidence behind it instead of none.
 STAGES: tuple[tuple[int, int], ...] = (
-    (8, 0),       # 0 = terminal; raise the cap deliberately, not automatically
+    (1, 10),
+    (3, 10),
+    (8, 0),
 )
 
 

@@ -601,7 +601,10 @@ class TrialBook:
                 book_age_ms=round(_book_age_ms, 1),
                 order_ms=round(_order_ms, 1),
             ))
-        if live and self.guard is not None:
+        if live and self.guard is not None and parse_fill(resp)[0] > 0:
+            # Stage on filled orders, not placed ones. Placements ran ~10x fills
+            # (277 counted against 25 real), so counting them would ramp the cap
+            # on evidence that never existed.
             self.guard.note_order()
         if live and resp.get("http_status") not in (200, 201, None):
             journal.log("order_reject", {"book": self.spec.book_id,
