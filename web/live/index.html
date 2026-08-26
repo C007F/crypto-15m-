@@ -215,13 +215,21 @@ function exec(d){
   $("exec").innerHTML=h;
 }
 
+function fmtTs(iso){
+  // raw ts is UTC; render in the viewer's local time (Central) with the date,
+  // because a feed that quietly mixes yesterday and today in UTC misleads.
+  const t=new Date(iso);
+  if(isNaN(t)) return (iso||"").slice(11,19);
+  const p=n=>String(n).padStart(2,"0");
+  return `${t.getMonth()+1}/${t.getDate()} ${p(t.getHours())}:${p(t.getMinutes())}:${p(t.getSeconds())}`;
+}
 function feed(d){
   const r=d.attempts_feed||[];
   $("feed").innerHTML=r.length?r.map(x=>{
     const hit=+x.filled>0;
     const px=x.cost==null?null:x.cost;
     const mult=px?` <span class="faint">${(1/px).toFixed(0)}x</span>`:"";
-    return `<div><span class="faint">${(x.ts||"").slice(11,19)}</span>
+    return `<div><span class="faint">${fmtTs(x.ts)}</span>
       <span class="${hit?"up":"down"}">${hit?"\u25cf":"\u25cb"}</span>
       <span class="coin">${(x.asset||"").toUpperCase()}</span>
       ${x.side||""} ${hit?x.filled:0}/${x.requested||0}
@@ -237,7 +245,7 @@ async function tick(){
       ? `<div class="err">Kalshi read failed: ${d.exchange.error}</div>`:"";
     hero(d);coins(d);risk(d);exec(d);feed(d);
     if(d.window){clockLeft=d.window.left;}
-    $("when").textContent=new Date().toLocaleTimeString();
+    $("when").textContent=new Date().toLocaleString([],{month:"numeric",day:"numeric",hour:"2-digit",minute:"2-digit",second:"2-digit"});
   }catch(e){
     $("err").innerHTML=`<div class="err">dashboard fetch failed: ${e}</div>`;
   }
