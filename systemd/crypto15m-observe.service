@@ -1,0 +1,15 @@
+[Unit]
+Description=Crypto 15m causal observation log (stakes nothing)
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/cam/projects/crypto-15m-bot
+Environment=PYTHONUNBUFFERED=1
+Environment=ASSET=sol
+ExecStart=/home/cam/projects/crypto-15m-bot/.venv/bin/python research/observe.py
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=default.target
