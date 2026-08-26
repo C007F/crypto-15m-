@@ -322,7 +322,8 @@ function feed(d){
     <th data-tip="time remaining to expiry when the order was placed">Left</th>
     <th data-tip="WON settled our way \u00b7 lost settled against us \u00b7 cut we exited early \u00b7 miss never filled \u00b7 open still riding">Result</th>
     <th data-tip="net profit after fees, from the exchange-settled close">Net</th>
-    <th data-tip="open positions only: what our side's current bid pays to close now, with unrealized P&L against cost">Value</th></tr>`;
+    <th data-tip="open positions only: what our side's current bid pays to close now, with unrealized P&L against cost">Value</th>
+    <th data-tip="open positions only: net profit if this settles our way - every contract pays $1">If won</th></tr>`;
   for(const x of r){
     const hit=+x.filled>0, px=x.cost, o=x.outcome;
     let res='<span class="faint">\u2014</span>', net='';
@@ -332,10 +333,11 @@ function feed(d){
                :`<span class="down">${o.how==="flatten"?"cut":"lost"}</span>`;
       net=`<span class="${o.pnl>0?"up":o.pnl<0?"down":"dim"}">${money(o.pnl)}</span>`;
     } else { res='<span class="warn">open</span>'; }
-    let val='';
+    let val='', pot='';
     if(x.mtm){
       val=`<span class="mono">$${x.mtm.value.toFixed(2)}</span> `
          +`<span class="${x.mtm.unreal>0?"up":x.mtm.unreal<0?"down":"dim"}">(${x.mtm.unreal>=0?"+":""}${x.mtm.unreal.toFixed(2)})</span>`;
+      if(x.mtm.max_win!=null) pot=`<span class="up">+$${x.mtm.max_win.toFixed(2)}</span>`;
     }
     const isOpen = hit && !o;
     h+=`<tr class="${isOpen?"open-row":""}">
@@ -351,6 +353,7 @@ function feed(d){
       <td>${res}</td>
       <td>${net}</td>
       <td>${val}</td>
+      <td>${pot}</td>
     </tr>`;
   }
   $("feed").innerHTML=h;

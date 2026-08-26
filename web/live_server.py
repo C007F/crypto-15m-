@@ -212,7 +212,9 @@ def _attempts_feed(orders) -> list:
                     n = int(r.get("filled") or 0)
                     if 0 < bid < 1:
                         mtm = {"value": round(bid * n, 2),
-                               "unreal": round((bid - float(cost)) * n, 2)}
+                               "unreal": round((bid - float(cost)) * n, 2),
+                               # if it settles our way: contracts pay $1 each
+                               "max_win": round((1 - float(cost)) * n, 2)}
             except (OSError, KeyError, ValueError, json.JSONDecodeError):
                 pass
         out.append({
