@@ -48,6 +48,32 @@ made it impossible to attribute anything.
 
 ---
 
+## 1b. Is ENTRY_START_SEC=90 too conservative?
+
+**Status:** unmeasured, now being collected.
+
+The observer's earliest checkpoint was 750s remaining (150s elapsed), so
+the first 90 seconds of every window are a blind spot. The 90s start does
+not block the best measured zone, but whether there is MORE edge in front
+of it has never been tested.
+
+Live probe at 107s elapsed showed liquidity is asset-dependent:
+
+    btc   yes_ask 0.720  no_ask 0.290   depth 7316 / 4409
+    sol   NO BOOK
+    zec   NO BOOK
+
+BTC is deep almost immediately; the smaller coins have nothing resting yet.
+So a single global start time is probably wrong - it is too late for BTC and
+irrelevant for SOL. A per-asset start, or simply gating on book presence
+rather than a clock, is likely better than tuning one number.
+
+Added marks 870/840/810 to `research/observe.py` (30/60/90s elapsed) to
+measure it. Same graduation rule as #1: replicate across days, confirm with
+live fills, change one thing at a time.
+
+---
+
 ## 2. Price band boundaries are soft at the edges
 
 `MIN_COST=0.02` / `MAX_COST=0.50` are deployed but have never bound — zero

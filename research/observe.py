@@ -31,7 +31,9 @@ OUT = Path("research/observations.jsonl")
 PENDING = Path("research/pending.json")
 # Checkpoints in seconds-remaining. Fixed so every window is sampled the same
 # way and buckets are comparable across assets and days.
-MARKS = [750, 600, 450, 300, 240, 180, 150, 120, 90, 60]
+# 870/840/810 cover the first 90s, which ENTRY_START_SEC currently skips
+# and which no data has ever touched. Cheap to watch, stakes nothing.
+MARKS = [870, 840, 810, 750, 600, 450, 300, 240, 180, 150, 120, 90, 60]
 TOL = 12.0
 
 
