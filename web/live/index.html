@@ -233,8 +233,8 @@ function coins(d){
       <td>${fmtPx(c.spot)}</td>
       <td class="dim">${fmtPx(c.strike)}</td>
       <td>${c.dist_bps==null?"\u2014":c.dist_bps>=0
-          ?'<span class="up" data-tip="spot is over the strike - YES wins if it settles here">YES</span>'
-          :'<span class="down" data-tip="spot is under the strike - NO wins if it settles here">NO</span>'}</td>
+          ?'<span class="up" data-tip="spot is over the strike - the YES side wins if it settles here">OVER</span>'
+          :'<span class="down" data-tip="spot is under the strike - the NO side wins if it settles here">UNDER</span>'}</td>
       <td class="sm-hide ${cls(c.dist_bps)}">${dist}</td>
       <td>${c.yes_ask==null?"—":c.yes_ask.toFixed(2)}</td>
       <td class="dim sm-hide">${c.p_yes==null?"—":c.p_yes.toFixed(2)}</td>
