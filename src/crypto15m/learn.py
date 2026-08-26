@@ -114,12 +114,25 @@ class Coach:
     def recent(self, n: int = 8) -> list[dict]:
         return list(reversed(self._lessons[-n:]))
 
+    # Lessons older than this stop raising the bar. They stay in the journal -
+    # nothing is deleted - they just stop being sentencing guidelines. Without
+    # an expiry the bar only ratchets up: the +0.02 late_window penalty active
+    # on 2026-08-26 was earned entirely under the stale-quote pricing that had
+    # been fixed that morning, so the bot was trading shy to atone for a
+    # regime that no longer existed.
+    LESSON_SHELF_LIFE_DAYS = 7
+
     def extra_edge(self, book_id: str) -> Decimal:
-        """If a book keeps making the same mistake, demand more leftover edge."""
+        """If a book keeps making the same mistake RECENTLY, demand more edge."""
+        from datetime import datetime, timedelta, timezone
+        cutoff = (datetime.now(timezone.utc)
+                  - timedelta(days=self.LESSON_SHELF_LIFE_DAYS)).isoformat()
         tags = Counter()
         for les in self._lessons:
             if les.get("book") != book_id or les.get("won"):
                 continue          # winners must not raise a book's own bar
+            if str(les.get("ts") or "") < cutoff:
+                continue          # expired: a dead regime's mistakes
             for t in les.get("tags") or []:
                 tags[t] += 1
         extra = Decimal("0")
