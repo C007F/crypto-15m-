@@ -189,6 +189,13 @@ function hero(d){
      <div class="sub">${s}</div></div>`).join("");
 }
 
+function fmtPx(v){
+  if(v==null||isNaN(v)) return "\u2014";
+  v=+v;
+  // sub-dollar coins need the precision; BTC does not need cents
+  return v>=1000?v.toLocaleString(undefined,{maximumFractionDigits:0})
+        :v>=10?v.toFixed(2):v.toFixed(4);
+}
 function coins(d){
   // per-asset P/L from Kalshi settlements, not our journal
   const per=(d.exchange||{}).per_asset||{};
@@ -201,7 +208,9 @@ function coins(d){
   let h=`<tr>
      <th data-tip="which coin. Green dot = its trader process is running; 'excl' = excluded from live trading">Asset</th>
      <th data-tip="time left in this coin's current 15-minute window">Window</th>
-     <th data-tip="how far spot is from the strike, in basis points. Positive = above the strike, so YES (over) is currently winning">Dist</th>
+     <th data-tip="live spot price from Coinbase - what the coin trades at right now">Price</th>
+     <th data-tip="the strike this window settles against: above it at expiry = YES wins">Strike</th>
+     <th class="sm-hide" data-tip="how far spot is from the strike, in basis points. Positive = above the strike, so YES (over) is currently winning">Dist</th>
      <th data-tip="current price of the YES side from the live orderbook">Ask</th>
      <th class="sm-hide" data-tip="our model's probability that YES wins. Edge = this vs the ask">P(yes)</th>
      <th data-tip="net settled profit for this asset, from Kalshi's records - not our journal">P/L</th>
@@ -215,7 +224,9 @@ function coins(d){
         <span class="coin">${c.label}</span>
         ${c.excluded?' <span class="warn" style="font-size:10px">excl</span>':""}</td>
       <td class="dim">${c.clock||"—"}</td>
-      <td class="${cls(c.dist_bps)}">${dist}</td>
+      <td>${fmtPx(c.spot)}</td>
+      <td class="dim">${fmtPx(c.strike)}</td>
+      <td class="sm-hide ${cls(c.dist_bps)}">${dist}</td>
       <td>${c.yes_ask==null?"—":c.yes_ask.toFixed(2)}</td>
       <td class="dim sm-hide">${c.p_yes==null?"—":c.p_yes.toFixed(2)}</td>
       <td class="${cls(c.asset_pnl)}">${c.asset_pnl==null?"—":money(c.asset_pnl)}</td>
