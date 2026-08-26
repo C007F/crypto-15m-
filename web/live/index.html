@@ -233,9 +233,17 @@ function fmtTs(iso){
 function feed(d){
   const r=d.attempts_feed||[];
   if(!r.length){$("feed").innerHTML='<tr><td class="faint">no attempts yet</td></tr>';return;}
-  let h=`<tr><th>Time</th><th>Fill</th><th>Asset</th><th>Side</th><th>Qty</th>
-    <th>Cost</th><th>Pays</th><th class="sm-hide">Left</th>
-    <th>Result</th><th>Net</th></tr>`;
+  let h=`<tr>
+    <th title="when the order was sent (Central time)">Time</th>
+    <th title="\u25cf filled  \u00b7  \u25cb accepted but nothing crossed">Fill</th>
+    <th title="which coin's 15-minute market">Asset</th>
+    <th title="every window asks: will price finish ABOVE the strike? yes = over, no = under">Side</th>
+    <th title="contracts filled / contracts requested">Qty</th>
+    <th title="what one contract cost us (a NO at yes-price 0.90 costs 0.10)">Cost</th>
+    <th title="gross payoff multiple if it wins: a 0.10 contract pays $1.00 = 10x">Pays</th>
+    <th class="sm-hide" title="seconds remaining in the 15-min window when we entered">Left</th>
+    <th title="WON settled our way \u00b7 lost settled against us \u00b7 cut we exited early \u00b7 miss never filled \u00b7 open still riding">Result</th>
+    <th title="net profit after fees, from the exchange-settled close">Net</th></tr>`;
   for(const x of r){
     const hit=+x.filled>0, px=x.cost, o=x.outcome;
     let res='<span class="faint">\u2014</span>', net='';
@@ -249,7 +257,7 @@ function feed(d){
       <td class="dim" style="font-family:var(--mono)">${fmtTs(x.ts)}</td>
       <td class="${hit?"up":"down"}" title="${hit?"order filled":"order missed - accepted but nothing crossed"}">${hit?"\u25cf":"\u25cb"}</td>
       <td><span class="coin">${(x.asset||"").toUpperCase()}</span></td>
-      <td class="dim">${x.side||""}</td>
+      <td class="dim" title="${x.side==="yes"?"betting price finishes ABOVE the strike (over)":"betting price finishes BELOW the strike (under)"}">${x.side||""}</td>
       <td>${hit?x.filled:0}/${x.requested||0}</td>
       <td>${px?px.toFixed(3):"\u2014"}</td>
       <td class="dim">${px?(1/px).toFixed(0)+"x":"\u2014"}</td>
