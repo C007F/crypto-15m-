@@ -120,11 +120,16 @@ tr:last-child td{border-bottom:none}
     <div class="card" style="margin-bottom:18px">
       <h2>Execution</h2><div id="exec"></div>
     </div>
-    <div class="card">
-      <h2>Order attempts</h2><div class="feed" id="feed"></div>
-      <div class="note">Misses included on purpose — an accepted order that fills nothing is how the stale-quote bug showed itself.</div>
-    </div>
+
   </div>
+</div>
+
+<div class="card" style="margin-top:18px">
+  <h2>Trade log</h2>
+  <div class="scroll"><table id="feed"></table></div>
+  <div class="note">Every order attempt, newest first, joined to how it ended.
+  Misses (○) stay in on purpose — an accepted order that fills nothing is how
+  the stale-quote bug showed itself. Blank result = position still open.</div>
 </div>
 
 <script>
@@ -227,17 +232,33 @@ function fmtTs(iso){
 }
 function feed(d){
   const r=d.attempts_feed||[];
-  $("feed").innerHTML=r.length?r.map(x=>{
-    const hit=+x.filled>0;
-    const px=x.cost==null?null:x.cost;
-    const mult=px?` <span class="faint">${(1/px).toFixed(0)}x</span>`:"";
-    return `<div><span class="faint">${fmtTs(x.ts)}</span>
-      <span class="${hit?"up":"down"}">${hit?"\u25cf":"\u25cb"}</span>
-      <span class="coin">${(x.asset||"").toUpperCase()}</span>
-      ${x.side||""} ${hit?x.filled:0}/${x.requested||0}
-      ${px?`<span class="dim">@${px.toFixed(3)}</span>`:""}${mult}
-      <span class="faint">${Math.round(x.remaining_sec||0)}s left</span></div>`;
-  }).join(""):'<div class="faint">no attempts yet</div>';
+  if(!r.length){$("feed").innerHTML='<tr><td class="faint">no attempts yet</td></tr>';return;}
+  let h=`<tr><th>Time</th><th></th><th>Asset</th><th>Side</th><th>Qty</th>
+    <th>Cost</th><th>Pays</th><th class="sm-hide">Left</th>
+    <th>Result</th><th>Net</th></tr>`;
+  for(const x of r){
+    const hit=+x.filled>0, px=x.cost, o=x.outcome;
+    let res='<span class="faint">\u2014</span>', net='';
+    if(!hit){ res='<span class="down">miss</span>'; }
+    else if(o){
+      res=o.won?'<span class="up">WON</span>'
+               :`<span class="down">${o.how==="flatten"?"cut":"lost"}</span>`;
+      net=`<span class="${o.pnl>0?"up":o.pnl<0?"down":"dim"}">${money(o.pnl)}</span>`;
+    } else { res='<span class="warn">open</span>'; }
+    h+=`<tr>
+      <td class="dim" style="font-family:var(--mono)">${fmtTs(x.ts)}</td>
+      <td class="${hit?"up":"down"}">${hit?"\u25cf":"\u25cb"}</td>
+      <td><span class="coin">${(x.asset||"").toUpperCase()}</span></td>
+      <td class="dim">${x.side||""}</td>
+      <td>${hit?x.filled:0}/${x.requested||0}</td>
+      <td>${px?px.toFixed(3):"\u2014"}</td>
+      <td class="dim">${px?(1/px).toFixed(0)+"x":"\u2014"}</td>
+      <td class="dim sm-hide">${Math.round(x.remaining_sec||0)}s</td>
+      <td>${res}</td>
+      <td>${net}</td>
+    </tr>`;
+  }
+  $("feed").innerHTML=h;
 }
 
 async function tick(){

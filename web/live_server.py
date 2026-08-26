@@ -171,13 +171,28 @@ def _window_clock() -> dict:
     return {"left": left, "label": f"{left // 60}:{left % 60:02d}"}
 
 
-def _attempts_feed(orders) -> list:
-    """Recent order attempts, filled or not.
+def _outcomes() -> dict:
+    """ticker -> closed-trade outcome, from the per-asset lesson journals."""
+    out = {}
+    for f in DATA.glob("*/lessons_live.jsonl"):
+        for les in _rows(f):
+            t = les.get("ticker")
+            if t:
+                out[t] = {"pnl": float(les.get("pnl") or 0),
+                          "won": bool(les.get("won")),
+                          "how": les.get("how") or ""}
+    return out
 
-    The misses are the point: an accepted order that fills nothing is how the
-    stale-quote bug showed itself, and it is invisible on a fills-only feed.
+
+def _attempts_feed(orders) -> list:
+    """Recent order attempts joined to how each trade ENDED.
+
+    Misses stay in on purpose - an accepted order that fills nothing is how
+    the stale-quote bug showed itself. Fills carry their outcome once the
+    position closes: won/lost, net P&L, and whether it settled or was cut.
     """
-    rows = sorted(orders, key=lambda r: str(r.get("ts")), reverse=True)[:14]
+    res = _outcomes()
+    rows = sorted(orders, key=lambda r: str(r.get("ts")), reverse=True)[:30]
     out = []
     for r in rows:
         try:
@@ -185,12 +200,14 @@ def _attempts_feed(orders) -> list:
         except Exception:
             px = Decimal("0")
         cost = px if r.get("side") == "yes" else (Decimal("1") - px)
+        o = res.get(r.get("ticker")) if int(r.get("filled") or 0) else None
         out.append({
             "ts": r.get("ts"), "asset": r.get("asset"), "side": r.get("side"),
             "requested": r.get("requested"), "filled": r.get("filled"),
             "cost": float(cost) if 0 < cost < 1 else None,
             "remaining_sec": r.get("remaining_sec"),
             "status": r.get("status"),
+            "outcome": o,     # None = missed, or filled and still open
         })
     return out
 
