@@ -29,6 +29,7 @@ header .when{margin-left:auto;font-size:12px;color:var(--faint)}
 header .clock{font-size:15px;font-weight:600;color:var(--accent);
   padding:2px 9px;border-radius:5px;background:#1f6feb1a;border:1px solid #1f6feb33}
 header .clock.soon{color:var(--warn);background:#d299221a;border-color:#d2992244}
+header .now{font-size:13px;color:var(--dim)}
 
 /* headline numbers */
 .hero{display:grid;grid-template-columns:repeat(6,1fr);
@@ -101,6 +102,7 @@ tr:last-child td{border-bottom:none}
   <h1>Kalshi 15m</h1>
   <span class="tag">live · real money</span>
   <span class="clock mono" id="clock" title="time left in the current 15m window">—</span>
+  <span class="now mono" id="nowct" title="current time, US Central">—</span>
   <span class="when" id="when">…</span>
 </header>
 <div id="err"></div>
@@ -220,8 +222,8 @@ function fmtTs(iso){
   // because a feed that quietly mixes yesterday and today in UTC misleads.
   const t=new Date(iso);
   if(isNaN(t)) return (iso||"").slice(11,19);
-  const p=n=>String(n).padStart(2,"0");
-  return `${t.getMonth()+1}/${t.getDate()} ${p(t.getHours())}:${p(t.getMinutes())}:${p(t.getSeconds())}`;
+  return t.toLocaleString("en-US",{timeZone:"America/Chicago",
+    month:"numeric",day:"numeric",hour:"2-digit",minute:"2-digit",second:"2-digit",hour12:false});
 }
 function feed(d){
   const r=d.attempts_feed||[];
@@ -258,6 +260,13 @@ function paintClock(){
   el.textContent=`${m}:${String(sec).padStart(2,"0")}`;
   el.classList.toggle("soon", clockLeft<=150);
 }
-setInterval(()=>{ if(clockLeft!=null){ clockLeft=clockLeft>0?clockLeft-1:899; paintClock(); } },1000);
+function paintNow(){
+  // pinned to America/Chicago, not browser-guessed - Cam is Central and this
+  // must read the same from any device
+  $("nowct").textContent=new Date().toLocaleTimeString("en-US",
+    {timeZone:"America/Chicago",hour:"numeric",minute:"2-digit",second:"2-digit"})+" CT";
+}
+setInterval(()=>{ if(clockLeft!=null){ clockLeft=clockLeft>0?clockLeft-1:899; paintClock(); } paintNow(); },1000);
+paintNow();
 tick();setInterval(tick,5000);
 </script>
