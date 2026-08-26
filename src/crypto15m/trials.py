@@ -59,13 +59,18 @@ LIVE_BOOKS = frozenset({"micro"})
 # rejecting would otherwise absorb every tick of a window.
 MAX_ENTRY_ATTEMPTS = 3
 
+# Paper removed 2026-08-26. gate, momentum, lotto and sit were paper-only and
+# all had measured negative or flat expectancy - momentum -$0.18/trade, lotto
+# -$0.19/trade, gate flat - so they existed purely to be compared against, and
+# the comparison was the problem: paper filled at quotes that cannot be crossed.
+# micro is the only book that has ever traded real money.
+#
+# The "gate"/"longshot"/"sit" branches in step() are left in place. They are a
+# few lines, they are unreachable with this BOOKS tuple, and ripping dispatch
+# out of the live trading path to delete dead code is a bad trade.
 BOOKS = (
-    BookSpec("gate", "GATE", "Mix of all experts", "gate"),
     BookSpec("micro", "MICRO", "Stale Kalshi odds vs spot. Up to 3x on conviction.",
              "named", "microstructure", size_mult=Decimal("3")),
-    BookSpec("momentum", "MOMENTUM", "1/3/5m BTC tape", "named", "momentum"),
-    BookSpec("lotto", "LOTTO 10x", "$1 on any side paying >=10x. Cam's thesis vs longshot bias.", "longshot"),
-    BookSpec("sit", "SIT", "Never trades. Control.", "sit"),
 )
 
 # Longshot book: buy when a side's ask implies >=10x gross payout (ask <=

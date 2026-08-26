@@ -75,31 +75,21 @@ class Mind:
                                 guard=self.guard, fills=self.fills)
                       for spec in specs]
 
-        # Shadow book: the same micro strategy, fed the identical frames in the
-        # same process, but paper-filled at the quoted price. Running it here
-        # rather than as six more processes avoids rate-limiting the live
-        # traders, and guarantees the signals are byte-identical rather than
-        # merely similar.
-        #
-        # The difference between shadow and live IS the execution cost. Nothing
-        # else varies: same book, same tick, same decision.
-        self.shadow = None
-        if live:
-            import dataclasses
-            shadow_dir = settings.data_dir / "shadow"
-            shadow_dir.mkdir(parents=True, exist_ok=True)
-            sset = dataclasses.replace(settings, data_dir=shadow_dir)
-            spec = next(b for b in BOOKS if b.book_id == "micro")
-            self.shadow = TrialBook(spec, sset, coach=Coach(shadow_dir / "lessons.jsonl"))
-            # Its OWN journal. Sharing the live one made shadow trades
-            # indistinguishable from real ones - XRP showed 6-0 on a single
-            # live fill because thirteen shadow fills were being counted as
-            # live. The comparison is worthless if both sides write to the
-            # same ledger.
-            self.shadow_journal = Journal(shadow_dir / "journal.sqlite3")
+        # A shadow book - a paper-filled copy of micro fed identical frames -
+        # ran here until 2026-08-26. Removed with the rest of paper: it burned
+        # API calls inside the live traders and its output invited exactly the
+        # comparison that made the dashboard misleading, since a simulation
+        # filling at quotes we cannot cross is not a benchmark. Execution cost
+        # is measured directly now, from fill_px against the book we already
+        # record on every order.
         self.spot_candles = CandleStore(settings.asset.spot_product)
         self.ref_candles = CandleStore(settings.asset.ref_product)
         self._candle_ts = 0.0
+        # Spread across 12-24s. Seeded from the asset name rather than hash(),
+        # which Python randomises per process - the offsets must be stable
+        # across restarts or the herd can re-synchronise.
+        _seed = sum(ord(c) for c in settings.asset.key)
+        self._candle_every = 12.0 + (_seed % 120) / 10.0
         self.ladder = LadderObserver(settings.data_dir)
         # Built lazily on first use, rebuilt daily. A failed build degrades to
         # the Gaussian rather than blocking trading.
@@ -108,7 +98,11 @@ class Mind:
 
     def _refresh_candles(self) -> None:
         now = time.time()
-        if now - self._candle_ts < 15:
+        # Jittered interval. All seven traders restart together, so a fixed 15s
+        # put their refreshes in lockstep: they all missed the shared cache in
+        # the same instant and stampeded Coinbase, which is why BTC-USD - the
+        # one product every trader wants - was the only thing taking 429s.
+        if now - self._candle_ts < self._candle_every:
             return
         try:
             self.spot_candles.refresh(self.client.session)
@@ -264,16 +258,6 @@ class Mind:
                 client=self.client,
             )
             notes.append(f"{book.spec.book_id}:{n}")
-
-        if self.shadow is not None:
-            try:
-                # dry_run=True: it never places an order, it only books what a
-                # perfect fill would have done.
-                self.shadow.step(now=now, frame=frame, views=views, gated=gated,
-                                 journal=self.shadow_journal, live=False,
-                                 client=self.client)
-            except Exception:
-                log.warning("shadow book step failed", exc_info=True)
 
         line = self._render(frame, gated, " | ".join(notes))
         self._write_status(frame, views, gated, now, line)

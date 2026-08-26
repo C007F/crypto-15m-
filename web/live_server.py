@@ -15,6 +15,7 @@ import json
 import time
 from collections import Counter, defaultdict
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from decimal import Decimal
 from pathlib import Path
 
 ROOT = Path("/home/cam/projects/crypto-15m-bot")
@@ -128,6 +129,37 @@ def exchange_truth() -> dict:
     return d
 
 
+def _window_clock() -> dict:
+    """Seconds left in the current 15m window. Every asset shares the boundary."""
+    now = time.time()
+    left = 900 - int(now % 900)
+    return {"left": left, "label": f"{left // 60}:{left % 60:02d}"}
+
+
+def _attempts_feed(orders) -> list:
+    """Recent order attempts, filled or not.
+
+    The misses are the point: an accepted order that fills nothing is how the
+    stale-quote bug showed itself, and it is invisible on a fills-only feed.
+    """
+    rows = sorted(orders, key=lambda r: str(r.get("ts")), reverse=True)[:14]
+    out = []
+    for r in rows:
+        try:
+            px = Decimal(str(r.get("fill_px") or r.get("quoted_px") or 0))
+        except Exception:
+            px = Decimal("0")
+        cost = px if r.get("side") == "yes" else (Decimal("1") - px)
+        out.append({
+            "ts": r.get("ts"), "asset": r.get("asset"), "side": r.get("side"),
+            "requested": r.get("requested"), "filled": r.get("filled"),
+            "cost": float(cost) if 0 < cost < 1 else None,
+            "remaining_sec": r.get("remaining_sec"),
+            "status": r.get("status"),
+        })
+    return out
+
+
 def _era(entries, filled) -> dict:
     """Health since the pricing fix, alongside the all-time figure.
 
@@ -238,6 +270,8 @@ def build() -> dict:
     return {
         "coins": coins,
         "exchange": exchange_truth(),
+        "window": _window_clock(),
+        "attempts_feed": _attempts_feed(orders),
         "era": _era(entries, filled),
         "wins": tot_w, "closed": tot_c,
         "win_rate": (tot_w / tot_c) if tot_c else None,

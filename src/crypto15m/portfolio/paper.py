@@ -7,6 +7,10 @@ from crypto15m.domain import Fill, MarketQuote, Permit, PortfolioSnapshot, Posit
 from crypto15m.risk.governor import ny_date
 
 
+# NOTE: despite the name this is the LIVE book's position ledger, not paper
+# trading. Paper was removed on 2026-08-26; this stayed because it is what
+# tracks real positions, cost basis and realised P&L. Renaming it means
+# touching the live trading path for cosmetics, which is not worth the risk.
 class PaperPortfolio:
     """Simulated Kalshi account. Marks Yes positions at yes_bid (exit), No at no_bid."""
 

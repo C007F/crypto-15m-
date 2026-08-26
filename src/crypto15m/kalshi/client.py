@@ -176,7 +176,21 @@ class KalshiClient:
         self._open_ticker = live[0].ticker
         return self.with_book(live[0])
 
+    _ob_cache: dict = {}
+
     def orderbook_top(self, ticker: str) -> tuple | None:
+        # Short TTL cache. Adding an orderbook read to every tick doubled this
+        # process's request rate, and 7 traders at POLL_SEC=2 sat on Kalshi's
+        # ceiling. The book does not meaningfully change inside one poll, so a
+        # sub-poll cache is free accuracy-wise and halves the calls.
+        _hit = self._ob_cache.get(ticker)
+        if _hit and (time.time() - _hit[0]) < 1.6:
+            return _hit[1]
+        out = self._orderbook_top_uncached(ticker)
+        self._ob_cache[ticker] = (time.time(), out)
+        return out
+
+    def _orderbook_top_uncached(self, ticker: str) -> tuple | None:
         """Best crossable ask on each side, from the resting book.
 
         Kalshi's orderbook is bids-only on both legs. Buying NO fills against

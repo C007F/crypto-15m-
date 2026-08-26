@@ -16,9 +16,13 @@ class Guard(unittest.TestCase):
         self.now = datetime(2026, 8, 24, 15, 0, tzinfo=timezone.utc)
         self.g.roll_day(self.now, Decimal("200"))
 
-    def test_starts_at_the_account_scaled_ceiling(self):
-        """No staging: conviction sizing decides, the ceiling only caps it."""
-        self.assertEqual(self.g.max_contracts, 8)
+    def test_starts_at_one_contract(self):
+        """The ramp starts small. Restored 2026-08-26: an 8-contract request
+        was harmless while stale-quote limits filled almost nothing, but once
+        orders actually crossed, 8 spent the $15 daily stop in three trades -
+        the fewest observations at the moment we understood the strategy
+        least."""
+        self.assertEqual(self.g.max_contracts, 1)
 
     def test_kill_file_blocks_immediately(self):
         self.assertEqual(self.g.blocked(Decimal("200")), "")
@@ -41,18 +45,30 @@ class Guard(unittest.TestCase):
         self.assertEqual(self.g.clamp(Decimal("999")),
                          Decimal(self.g.limits.max_contracts_hard))
 
-    def test_no_staging_the_ceiling_is_constant(self):
+    def test_ramp_climbs_to_the_hard_ceiling_and_stops(self):
         for _ in range(200):
             self.g.note_order()
         self.assertEqual(self.g.max_contracts, 8,
-                         "ceiling must not drift with order count")
+                         "ramp tops out at the hard ceiling and stays there")
+
+    def test_ramp_steps_on_filled_orders(self):
+        """1 -> 3 -> 8, ten fills per step."""
+        self.assertEqual(self.g.max_contracts, 1)
+        for _ in range(10):
+            self.g.note_order()
+        self.assertEqual(self.g.max_contracts, 3)
+        for _ in range(10):
+            self.g.note_order()
+        self.assertEqual(self.g.max_contracts, 8)
 
     def test_state_survives_restart(self):
-        for _ in range(20):
+        for _ in range(12):
             self.g.note_order()
         again = LiveGuard(self.d / "live.json")
-        self.assertEqual(again.state.orders_at_stage, 20)
-        self.assertEqual(again.max_contracts, 8)
+        # 10 advanced the stage and reset the counter, so 2 remain at stage 1.
+        self.assertEqual(again.state.stage, 1)
+        self.assertEqual(again.state.orders_at_stage, 2)
+        self.assertEqual(again.max_contracts, 3)
 
     def test_new_day_resets_loss_but_not_stage(self):
         self.g.record_close(Decimal("-20"))

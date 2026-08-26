@@ -26,6 +26,9 @@ header .tag{font-size:10px;text-transform:uppercase;letter-spacing:1px;
   padding:3px 7px;border-radius:4px;background:#1f6feb22;color:var(--accent);
   border:1px solid #1f6feb44}
 header .when{margin-left:auto;font-size:12px;color:var(--faint)}
+header .clock{font-size:15px;font-weight:600;color:var(--accent);
+  padding:2px 9px;border-radius:5px;background:#1f6feb1a;border:1px solid #1f6feb33}
+header .clock.soon{color:var(--warn);background:#d299221a;border-color:#d2992244}
 
 /* headline numbers */
 .hero{display:grid;grid-template-columns:repeat(5,1fr);
@@ -97,6 +100,7 @@ tr:last-child td{border-bottom:none}
 <header>
   <h1>Kalshi 15m</h1>
   <span class="tag">live · real money</span>
+  <span class="clock mono" id="clock" title="time left in the current 15m window">—</span>
   <span class="when" id="when">…</span>
 </header>
 <div id="err"></div>
@@ -115,7 +119,8 @@ tr:last-child td{border-bottom:none}
       <h2>Execution</h2><div id="exec"></div>
     </div>
     <div class="card">
-      <h2>Recent fills</h2><div class="feed" id="feed"></div>
+      <h2>Order attempts</h2><div class="feed" id="feed"></div>
+      <div class="note">Misses included on purpose — an accepted order that fills nothing is how the stale-quote bug showed itself.</div>
     </div>
   </div>
 </div>
@@ -142,9 +147,15 @@ function hero(d){
 }
 
 function coins(d){
-  const rows=(d.coins||[]).slice().sort((a,b)=>(b.pnl||0)-(a.pnl||0));
+  // per-asset P/L from Kalshi settlements, not our journal
+  const per=(d.exchange||{}).per_asset||{};
+  const rows=(d.coins||[]).slice().map(c=>{
+    const e=per[c.key];
+    return {...c, asset_pnl: e?e.pnl:null,
+            s_w: e?e.w:null, s_n: e?e.n:null};
+  }).sort((a,b)=>(b.asset_pnl??-1e9)-(a.asset_pnl??-1e9));
   let h=`<tr><th>Asset</th><th>Window</th><th>Dist</th><th>Ask</th>
-     <th class="sm-hide">P(yes)</th><th>Fills</th><th>W/L</th><th class="sm-hide">Spread</th></tr>`;
+     <th class="sm-hide">P(yes)</th><th>P/L</th><th>Fills</th><th>W/L</th><th class="sm-hide">Spread</th></tr>`;
   for(const c of rows){
     const dist=c.dist_bps==null?"—":(c.dist_bps>0?"+":"")+c.dist_bps.toFixed(1);
     h+=`<tr>
@@ -155,15 +166,16 @@ function coins(d){
       <td class="${cls(c.dist_bps)}">${dist}</td>
       <td>${c.yes_ask==null?"—":c.yes_ask.toFixed(2)}</td>
       <td class="dim sm-hide">${c.p_yes==null?"—":c.p_yes.toFixed(2)}</td>
+      <td class="${cls(c.asset_pnl)}">${c.asset_pnl==null?"—":money(c.asset_pnl)}</td>
       <td>${c.fills||0}</td>
-      <td><span class="up">${c.wins||0}</span><span class="faint">–</span><span class="down">${c.losses||0}</span></td>
+      <td><span class="up">${c.s_w??c.wins??0}</span><span class="faint">/</span><span class="dim">${c.s_n??c.closed??0}</span></td>
       <td class="sm-hide ${c.spread_c>=4?"warn":"dim"}">${c.spread_c==null?"—":c.spread_c.toFixed(1)+"¢"}</td>
     </tr>`;
   }
   $("coins").innerHTML=h;
-  $("coinnote").textContent="Dist is basis points from spot to strike. "
-    +"Ask and P(yes) are the current window. Per-asset W–L comes from our "
-    +"journal and undercounts; the headline uses Kalshi settlements.";
+  $("coinnote").textContent="P/L and W/n are settled trades from Kalshi, same source "
+    +"as the headline. Dist is basis points from spot to strike; ask and P(yes) "
+    +"are the window in play right now.";
 }
 
 function risk(d){
@@ -197,14 +209,18 @@ function exec(d){
 }
 
 function feed(d){
-  const r=(d.recent||[]).filter(x=>+x.filled>0).slice(0,11);
+  const r=d.attempts_feed||[];
   $("feed").innerHTML=r.length?r.map(x=>{
-    const cost=x.side==="yes"?+x.fill_px:1-(+x.fill_px);
+    const hit=+x.filled>0;
+    const px=x.cost==null?null:x.cost;
+    const mult=px?` <span class="faint">${(1/px).toFixed(0)}x</span>`:"";
     return `<div><span class="faint">${(x.ts||"").slice(11,19)}</span>
+      <span class="${hit?"up":"down"}">${hit?"\u25cf":"\u25cb"}</span>
       <span class="coin">${(x.asset||"").toUpperCase()}</span>
-      ${x.side} ${x.filled}× <span class="dim">@${cost.toFixed(3)}</span>
-      <span class="faint">${(1/cost).toFixed(0)}x</span></div>`;
-  }).join(""):'<div class="faint">no fills yet</div>';
+      ${x.side||""} ${hit?x.filled:0}/${x.requested||0}
+      ${px?`<span class="dim">@${px.toFixed(3)}</span>`:""}${mult}
+      <span class="faint">${Math.round(x.remaining_sec||0)}s left</span></div>`;
+  }).join(""):'<div class="faint">no attempts yet</div>';
 }
 
 async function tick(){
@@ -213,10 +229,20 @@ async function tick(){
     $("err").innerHTML=(d.exchange&&d.exchange.error)
       ? `<div class="err">Kalshi read failed: ${d.exchange.error}</div>`:"";
     hero(d);coins(d);risk(d);exec(d);feed(d);
+    if(d.window){clockLeft=d.window.left;}
     $("when").textContent=new Date().toLocaleTimeString();
   }catch(e){
     $("err").innerHTML=`<div class="err">dashboard fetch failed: ${e}</div>`;
   }
 }
+let clockLeft=null;
+function paintClock(){
+  const el=$("clock");
+  if(clockLeft==null){el.textContent="—";return;}
+  const m=Math.floor(clockLeft/60), sec=clockLeft%60;
+  el.textContent=`${m}:${String(sec).padStart(2,"0")}`;
+  el.classList.toggle("soon", clockLeft<=150);
+}
+setInterval(()=>{ if(clockLeft!=null){ clockLeft=clockLeft>0?clockLeft-1:899; paintClock(); } },1000);
 tick();setInterval(tick,5000);
 </script>

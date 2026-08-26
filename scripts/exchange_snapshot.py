@@ -42,6 +42,23 @@ def main() -> None:
             if rev - cost - D(x["fee_cost"]) > 0:
                 wins += 1
         out["winners"] = wins
+        # Per-asset P&L from settlements. The journal undercounts (cuts and
+        # partial closes do not land in it cleanly), so the board's per-asset
+        # numbers come from here, same source as the headline.
+        per = {}
+        for x in rows:
+            t = x.get("ticker") or ""
+            key = t[2:t.find("15M")].lower() if "15M" in t else "?"
+            cost = D(x["yes_total_cost_dollars"]) + D(x["no_total_cost_dollars"])
+            rev = D(str(x["revenue"])) / 100 if x["revenue"] else D("0")
+            pnl = rev - cost - D(x["fee_cost"])
+            e = per.setdefault(key, {"pnl": 0.0, "n": 0, "w": 0})
+            e["pnl"] += float(pnl); e["n"] += 1
+            if pnl > 0:
+                e["w"] += 1
+        for e in per.values():
+            e["pnl"] = round(e["pnl"], 4)
+        out["per_asset"] = per
         out["open"] = len(c.auth_get("/portfolio/positions")
                           .get("market_positions") or [])
     except Exception as e:

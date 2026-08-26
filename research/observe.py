@@ -121,7 +121,11 @@ def main():
                                 "yes_won": res == "yes"})
                     f.write(json.dumps(row) + "\n")
             save_pending(pending)
-        time.sleep(5)
+        # Research yields to trading, always. At 5s this competed with seven
+        # live traders for the same rate limit and they were taking 429s while
+        # trying to place orders. Checkpoints are minutes apart; 20s misses
+        # nothing.
+        time.sleep(20)
 
 
 if __name__ == "__main__":
