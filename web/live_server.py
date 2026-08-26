@@ -109,55 +109,32 @@ def _rows(path: Path) -> list[dict]:
         return []
 
 
-_EXCH = {"at": 0.0, "data": {}}
-
-
 def exchange_truth() -> dict:
-    """Authoritative P&L from Kalshi. Cached 30s - the dashboard polls faster
-    than settlements change, and the traders share the rate limit."""
-    now = time.time()
-    if now - _EXCH["at"] < 30 and _EXCH["data"]:
-        return _EXCH["data"]
-    out = {"balance": None, "day": None, "settled": 0, "winners": 0,
-           "open": 0, "error": None}
+    """Read the account snapshot written by scripts/exchange_snapshot.py.
+
+    Deliberately a file read. The dashboard is the web-facing process and must
+    never hold the signing key - preflight asserts it. The snapshot job does
+    the authenticated calls; this only reads the result, and reports staleness
+    rather than pretending a stale number is current.
+    """
     try:
-        from decimal import Decimal as D
-        import os
-        os.environ.setdefault("ASSET", "sol")
-        from crypto15m.config import load_settings
-        from crypto15m.kalshi.client import KalshiClient
-        c = KalshiClient(load_settings())
-        bal = D(c.auth_get("/portfolio/balance")["balance_dollars"])
-        out["balance"] = float(bal)
-        try:
-            st = json.loads((DATA / "live_state.json").read_text())
-            out["day"] = float(bal - D(st.get("start_equity") or bal))
-            out["stage_orders"] = st.get("orders_at_stage")
-            out["halted"] = st.get("halted") or ""
-        except Exception:
-            pass
-        today = time.strftime("%Y-%m-%d")
-        sets = c.auth_get("/portfolio/settlements", {"limit": 200})
-        rows = [x for x in (sets.get("settlements") or [])
-                if str(x.get("settled_time", ""))[:10] == today]
-        out["settled"] = len(rows)
-        wins = 0
-        for x in rows:
-            cost = D(x["yes_total_cost_dollars"]) + D(x["no_total_cost_dollars"])
-            rev = D(str(x["revenue"])) / 100 if x["revenue"] else D("0")
-            if rev - cost - D(x["fee_cost"]) > 0:
-                wins += 1
-        out["winners"] = wins
-        pos = c.auth_get("/portfolio/positions")
-        out["open"] = len(pos.get("market_positions") or [])
-    except Exception as e:
-        out["error"] = str(e)[:150]
-    _EXCH.update(at=now, data=out)
-    return out
+        d = json.loads((DATA / "exchange.json").read_text())
+    except (OSError, json.JSONDecodeError):
+        return {"balance": None, "day": None, "settled": 0, "winners": 0,
+                "open": 0, "error": "no snapshot yet", "age": None}
+    d["age"] = round(time.time() - float(d.get("at") or 0))
+    if d["age"] > 300:
+        d["error"] = f"snapshot {d['age']}s old"
+    return d
 
 
 def _era(entries, filled) -> dict:
-    """Health since the pricing fix, alongside the all-time figure."""
+    """Health since the pricing fix, alongside the all-time figure.
+
+    All-time mixes in two bugs that no longer exist - stale-quote limits that
+    could not cross, and orders sent to the wrong exchange index - so a single
+    blended number hides the current state.
+    """
     cur = [e for e in entries if str(e.get("ts", "")) >= PRICING_FIX]
     cur_f = [e for e in cur if int(e.get("filled") or 0)]
     reasons = Counter(str(e.get("status")) for e in cur

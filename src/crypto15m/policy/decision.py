@@ -41,6 +41,12 @@ def decide(
     if features.market.spread > settings.max_spread:
         return None
 
+    # If the real orderbook could not be read, the quote on this frame is the
+    # /markets summary - the pricing that filled nothing. Decline rather than
+    # trade blind on it.
+    if getattr(features, "book_stale", False):
+        return None
+
     # Price band. The cheap leg only pays inside 0.02-0.50; outside it the
     # measured edge is negative on both ends, so refuse before sizing.
     cheap = min(features.market.yes_ask, features.market.no_ask)

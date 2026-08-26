@@ -33,6 +33,9 @@ class FeatureFrame:
     spot_ret_15m: Decimal = Decimal("0")
     spot_accel: Decimal = Decimal("0")
     ref_ret_5m: Decimal = Decimal("0")
+    # Set when the real orderbook could not be read and `market` is
+    # therefore the /markets summary quote. The entry gate declines on it.
+    book_stale: bool = False
     ref_ret_15m: Decimal = Decimal("0")
     spot_ref_5m: Decimal = Decimal("0")
     vol_bps_5m: Decimal = Decimal("0")

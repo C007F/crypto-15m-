@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import replace
 import base64
 import json
+import logging
 import time
 import uuid
 from datetime import datetime, timezone
@@ -21,6 +22,8 @@ from crypto15m.kalshi.markets import parse_market
 # are absent by construction, and _guard_path() raises on anything not listed,
 # so a future edit cannot quietly add one. The bot can read markets, read its
 # balance, and place orders. It cannot move money.
+log = logging.getLogger(__name__)
+
 ALLOWED_PREFIXES = (
     "/markets",
     "/series/",
@@ -191,7 +194,16 @@ class KalshiClient:
         try:
             ob = self.public_get(f"/markets/{ticker}/orderbook",
                                  params={"depth": 5}).get("orderbook_fp") or {}
-        except Exception:
+        except Exception as exc:
+            # A swallowed failure here is dangerous: with_book() falls back to
+            # the /markets summary quote, which is the exact pricing that got
+            # 32 of 35 orders accepted and filled nothing. Under rate limiting
+            # that would silently revert the fix. Mark it so callers can refuse
+            # to trade rather than trade blind.
+            self.book_stale = True
+            log.warning("orderbook read failed for %s (%s) - "
+                        "pricing would fall back to stale quotes",
+                        ticker, str(exc)[:80])
             return None
         yes_bids = ob.get("yes_dollars") or []
         no_bids = ob.get("no_dollars") or []
@@ -203,7 +215,12 @@ class KalshiClient:
         return (Decimal("1") - bn[0], bn[1], Decimal("1") - by[0], by[1])
 
     def with_book(self, q: MarketQuote) -> MarketQuote:
-        """Overlay true book prices/sizes onto a summary quote."""
+        """Overlay true book prices/sizes onto a summary quote.
+
+        Sets `book_stale` when the overlay could not be applied. The entry gate
+        checks it and declines rather than pricing off the summary quote.
+        """
+        self.book_stale = False
         top = self.orderbook_top(q.ticker)
         if top is None:
             return q
@@ -219,6 +236,9 @@ class KalshiClient:
     # Overridable so livecheck can try the documented path without a code edit.
     # V2. /portfolio/orders is V1 and returns HTTP 410.
     order_path = "/portfolio/events/orders"
+
+    # True when the last with_book() could not read the real orderbook.
+    book_stale = False
 
     def get_balance(self) -> dict:
         return self.auth_get("/portfolio/balance")

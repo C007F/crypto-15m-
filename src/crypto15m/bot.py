@@ -136,6 +136,10 @@ class Mind:
             fallback_vol=self.vol,
         )
         self.vol = frame.vol_bps_15m
+        # Carry through whether get_open_market() actually reached the real
+        # orderbook. If it did not, `market` holds the summary quote and the
+        # entry gate must decline rather than price off it.
+        frame.book_stale = bool(getattr(self.client, "book_stale", False))
         try:
             if self.history.stale:
                 self.history.build(self.client.session)
