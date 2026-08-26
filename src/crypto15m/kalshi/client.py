@@ -29,6 +29,7 @@ ALLOWED_PREFIXES = (
     "/portfolio/events/orders",
     "/portfolio/positions",
     "/portfolio/fills",
+    "/portfolio/settlements",   # read-only history; what the Kalshi UI shows
 )
 
 FORBIDDEN = ("deposit", "withdraw", "transfer", "payment", "bank", "ach", "wallet")
