@@ -24,10 +24,22 @@ def main() -> None:
     try:
         bal = D(c.auth_get("/portfolio/balance")["balance_dollars"])
         out["balance"] = float(bal)
-        # Lifetime P&L = balance minus what was deposited. One $200 deposit,
-        # ever; the client refuses money-movement endpoints so this cannot
-        # drift without a human depositing, at which point update it.
-        out["total"] = float(bal - D("200"))
+        # Lifetime P&L against the capital ledger (data/capital.json). The
+        # bot cannot move money, so every deposit/withdrawal is Cam acting
+        # manually and gets a ledger row. profit = balance + withdrawn -
+        # deposited: new capital is not counted as return, and withdrawing
+        # does not erase return already earned.
+        try:
+            cap = json.loads((ROOT / "data" / "capital.json").read_text())
+            dep = sum(D(str(e["amount"])) for e in cap["events"] if e["kind"] == "deposit")
+            wd = sum(D(str(e["amount"])) for e in cap["events"] if e["kind"] == "withdraw")
+        except Exception:
+            dep, wd = D("200"), D("0")
+        profit = bal + wd - dep
+        out["total"] = float(profit)
+        out["deposited"] = float(dep)
+        out["withdrawn"] = float(wd)
+        out["total_pct"] = float(profit / dep * 100) if dep else None
         try:
             st = json.loads((ROOT / "data" / "live_state.json").read_text())
             out["day"] = float(bal - D(st.get("start_equity") or bal))

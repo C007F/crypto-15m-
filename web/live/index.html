@@ -160,8 +160,11 @@ function hero(d){
       "account cash straight from Kalshi's balance endpoint, refreshed every minute"],
     ["Today", money(x.day), (x.settled||0)+" settled · "+(x.winners||0)+" won",
       "balance now minus balance at the start of the trading day"],
-    ["All time", money(x.total), "vs $200 deposited",
-      "lifetime result: balance minus the one $200 deposit ever made"],
+    ["All time", money(x.total)
+        +(x.total_pct==null?"":` <span style="font-size:14px" class="${cls(x.total_pct)}">${x.total_pct>=0?"+":""}${x.total_pct.toFixed(1)}%</span>`),
+      "on $"+(x.deposited==null?"200":x.deposited.toFixed(0))+" deposited"
+        +(x.withdrawn?` · $${x.withdrawn.toFixed(0)} withdrawn`:""),
+      "return on capital YOU put in: (balance + withdrawn - deposited) / deposited. New deposits do not count as return, and withdrawing does not erase return already earned. Ledger: data/capital.json"],
     ["Fill rate", pct(e.rate), e.fills+" of "+e.attempts+" since the pricing fix",
       "share of orders that actually crossed, measured since the orderbook pricing fix (before it: 6%)"],
     ["Win rate", pct(x.settled?x.winners/x.settled:null), "breakeven ≈ 12.7% at 8x",
