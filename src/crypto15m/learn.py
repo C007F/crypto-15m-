@@ -114,12 +114,16 @@ class Coach:
     def recent(self, n: int = 8) -> list[dict]:
         return list(reversed(self._lessons[-n:]))
 
-    # Lessons older than this stop raising the bar. They stay in the journal -
-    # nothing is deleted - they just stop being sentencing guidelines. Without
-    # an expiry the bar only ratchets up: the +0.02 late_window penalty active
-    # on 2026-08-26 was earned entirely under the stale-quote pricing that had
-    # been fixed that morning, so the bot was trading shy to atone for a
-    # regime that no longer existed.
+    # The bar is judged on the last N closed trades, not on a time window.
+    # Time windows fail both ways here: with absolute thresholds (>=3 of a
+    # tag) and ~5 closes/coin/day, a 7-day window holds 30+ lessons and three
+    # late_window losses are near-certain at a 20% hit rate - the penalty
+    # becomes permanent by arithmetic. A count window self-scales: a busy day
+    # cycles mistakes out quickly, a quiet weekend does not expire into
+    # amnesia. The 7-day cap stays only as an outer bound so lessons from a
+    # long-dead regime cannot linger through a drought. Nothing is deleted
+    # from the journal either way.
+    LESSON_WINDOW_TRADES = 15
     LESSON_SHELF_LIFE_DAYS = 7
 
     def extra_edge(self, book_id: str) -> Decimal:
@@ -127,12 +131,14 @@ class Coach:
         from datetime import datetime, timedelta, timezone
         cutoff = (datetime.now(timezone.utc)
                   - timedelta(days=self.LESSON_SHELF_LIFE_DAYS)).isoformat()
+        mine = [les for les in self._lessons
+                if les.get("book") == book_id
+                and str(les.get("ts") or "") >= cutoff]
+        recent = mine[-self.LESSON_WINDOW_TRADES:]
         tags = Counter()
-        for les in self._lessons:
-            if les.get("book") != book_id or les.get("won"):
+        for les in recent:
+            if les.get("won"):
                 continue          # winners must not raise a book's own bar
-            if str(les.get("ts") or "") < cutoff:
-                continue          # expired: a dead regime's mistakes
             for t in les.get("tags") or []:
                 tags[t] += 1
         extra = Decimal("0")
