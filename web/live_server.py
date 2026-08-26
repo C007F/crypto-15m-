@@ -1,8 +1,13 @@
-"""Live trading dashboard. Reads only files on disk - never credentials.
+"""Live trading dashboard. Real money only.
 
-Deliberately separate from the paper board: the numbers that matter live are
-fill rate and realised cut cost, not equity curves. Paper answered "is there a
-signal". This answers "can we actually trade it".
+P&L comes from Kalshi settlements, not our own journal. The journal
+undercounts - it showed BTC at -1.37 on a day the account was up 12.00 -
+because cut positions and partial closes do not land in it cleanly. The
+exchange is the only authoritative record, so the headline numbers are read
+from /portfolio/settlements and /portfolio/balance and cached briefly.
+
+No paper, no shadow book. Comparing live against a simulation that filled at
+prices we cannot cross was actively misleading and is gone.
 """
 from __future__ import annotations
 
@@ -26,6 +31,14 @@ from crypto15m.bot import NO_LIVE_ASSETS  # noqa: E402
 # Live P&L starts after the shadow got its own journal. Before this the two
 # books shared a ledger and their trades cannot be told apart.
 LIVE_SINCE = "2026-08-25T15:00"
+
+# The orderbook pricing fix. Before this, limits were built off /markets
+# summary quotes that drift from the real book, so orders were accepted and
+# filled nothing - 32 of 35 died at status ok. All-time fill rate (16%) and the
+# 171 fill_or_kill / 58 market_not_found rejects describe bugs that no longer
+# exist, so headline health is measured from here and the full history is kept
+# separately rather than averaged in.
+PRICING_FIX = "2026-08-26T02:39"
 
 # One known-bad row. The ZEC settle was booked before the NO cost-basis fix
 # and recorded -0.9410 for a trade that really cost 7.35c. Corrected here
@@ -89,41 +102,74 @@ def live_pnl() -> dict[str, dict]:
     return out
 
 
-def shadow_pnl() -> dict[str, dict]:
-    """What the same strategy earned with perfect fills, same ticks.
-
-    Read from each coin's shadow account file rather than a journal: the
-    shadow book is a full TrialBook, so its ledger already holds equity,
-    realised P&L and trade count.
-    """
-    out: dict[str, dict] = {}
-    # Account files are cumulative from before the split, so shadow P&L is
-    # taken from the same window as live for an apples-to-apples gap.
-    for d in sorted(DATA.glob("*/shadow/accounts/micro.json")):
-        coin = d.parents[2].name
-        try:
-            b = json.loads(d.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            continue
-        pf = b.get("portfolio") or {}
-        try:
-            start = float(pf.get("starting_equity") or 0)
-            cash = float(pf.get("cash") or 0)
-            held = sum(float(p["contracts"]) * float(p["avg_price"])
-                       for p in (pf.get("positions") or {}).values())
-            out[coin] = {"pnl": round(cash + held - start, 4),
-                         "trades": int(pf.get("trades_today") or 0),
-                         "open": len(pf.get("positions") or {})}
-        except (TypeError, ValueError, KeyError):
-            continue
-    return out
-
-
 def _rows(path: Path) -> list[dict]:
     try:
         return [json.loads(l) for l in path.read_text(encoding="utf-8").splitlines() if l.strip()]
     except (OSError, json.JSONDecodeError):
         return []
+
+
+_EXCH = {"at": 0.0, "data": {}}
+
+
+def exchange_truth() -> dict:
+    """Authoritative P&L from Kalshi. Cached 30s - the dashboard polls faster
+    than settlements change, and the traders share the rate limit."""
+    now = time.time()
+    if now - _EXCH["at"] < 30 and _EXCH["data"]:
+        return _EXCH["data"]
+    out = {"balance": None, "day": None, "settled": 0, "winners": 0,
+           "open": 0, "error": None}
+    try:
+        from decimal import Decimal as D
+        import os
+        os.environ.setdefault("ASSET", "sol")
+        from crypto15m.config import load_settings
+        from crypto15m.kalshi.client import KalshiClient
+        c = KalshiClient(load_settings())
+        bal = D(c.auth_get("/portfolio/balance")["balance_dollars"])
+        out["balance"] = float(bal)
+        try:
+            st = json.loads((DATA / "live_state.json").read_text())
+            out["day"] = float(bal - D(st.get("start_equity") or bal))
+            out["stage_orders"] = st.get("orders_at_stage")
+            out["halted"] = st.get("halted") or ""
+        except Exception:
+            pass
+        today = time.strftime("%Y-%m-%d")
+        sets = c.auth_get("/portfolio/settlements", {"limit": 200})
+        rows = [x for x in (sets.get("settlements") or [])
+                if str(x.get("settled_time", ""))[:10] == today]
+        out["settled"] = len(rows)
+        wins = 0
+        for x in rows:
+            cost = D(x["yes_total_cost_dollars"]) + D(x["no_total_cost_dollars"])
+            rev = D(str(x["revenue"])) / 100 if x["revenue"] else D("0")
+            if rev - cost - D(x["fee_cost"]) > 0:
+                wins += 1
+        out["winners"] = wins
+        pos = c.auth_get("/portfolio/positions")
+        out["open"] = len(pos.get("market_positions") or [])
+    except Exception as e:
+        out["error"] = str(e)[:150]
+    _EXCH.update(at=now, data=out)
+    return out
+
+
+def _era(entries, filled) -> dict:
+    """Health since the pricing fix, alongside the all-time figure."""
+    cur = [e for e in entries if str(e.get("ts", "")) >= PRICING_FIX]
+    cur_f = [e for e in cur if int(e.get("filled") or 0)]
+    reasons = Counter(str(e.get("status")) for e in cur
+                      if not int(e.get("filled") or 0))
+    return {
+        "since": PRICING_FIX,
+        "attempts": len(cur), "fills": len(cur_f),
+        "rate": (len(cur_f) / len(cur)) if cur else None,
+        "all_attempts": len(entries), "all_fills": len(filled),
+        "all_rate": (len(filled) / len(entries)) if entries else None,
+        "reasons": reasons.most_common(6),
+    }
 
 
 def build() -> dict:
@@ -133,7 +179,6 @@ def build() -> dict:
     for coin, r in reconstructed().items():
         cur = pnl_by.setdefault(coin, {"wins": 0, "losses": 0, "pnl": 0.0})
         cur["wins"] += r["wins"]; cur["losses"] += r["losses"]; cur["pnl"] += r["pnl"]
-    shadow_by = shadow_pnl()
     coins, orders = [], []
     for key, a in ASSETS.items():
         d = DATA / key
@@ -164,7 +209,6 @@ def build() -> dict:
         except (OSError, json.JSONDecodeError):
             mkt = {}
         pr = pnl_by.get(key, {"wins": 0, "losses": 0, "pnl": 0.0})
-        sh = shadow_by.get(key, {"pnl": 0.0, "trades": 0, "open": 0})
         closed = pr["wins"] + pr["losses"]
         coins.append({
             "key": key, "label": a.label, "running": fresh,
@@ -189,9 +233,6 @@ def build() -> dict:
             "yes_ask": mkt.get("yes_ask"),
             "p_yes": mkt.get("p_yes"),
             "uncertainty": mkt.get("uncertainty"),
-            "shadow_pnl": sh.get("pnl", 0.0),
-            "shadow_trades": sh.get("trades", 0),
-            "gap": round(round(pr["pnl"], 4) - sh.get("pnl", 0.0), 4),
         })
 
     orders.sort(key=lambda r: r.get("ts", ""))
@@ -219,10 +260,9 @@ def build() -> dict:
     tot_c = sum(c["closed"] for c in coins)
     return {
         "coins": coins,
+        "exchange": exchange_truth(),
+        "era": _era(entries, filled),
         "wins": tot_w, "closed": tot_c,
-        "shadow_pnl": round(sum(c["shadow_pnl"] for c in coins), 4),
-        "shadow_trades": sum(c["shadow_trades"] for c in coins),
-        "gap": round(sum(c["gap"] for c in coins), 4),
         "win_rate": (tot_w / tot_c) if tot_c else None,
         "pnl": round(sum(c["pnl"] for c in coins), 4),
         "attempts": len(entries),

@@ -1,184 +1,199 @@
+<!doctype html>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>LIVE - crypto 15m</title>
+<title>Kalshi 15m — Live</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
 <style>
-  :root{--bg:#080b11;--panel:#0e141d;--line:#1d2634;--ink:#e8eef7;--dim:#8fa3bf;
-        --amber:#ffb454;--up:#26d07c;--down:#ff5c5c;--flat:#6b7d99;--red:#ff3b3b}
-  *{box-sizing:border-box}
-  body{margin:0;background:var(--bg);color:var(--ink);
-    font:13px/1.45 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
-  .wrap{max-width:1700px;margin:0 auto;padding:16px 20px 40px}
-  h1{font-size:13px;letter-spacing:.16em;text-transform:uppercase;color:var(--red);
-     margin:0 0 3px;font-weight:700}
-  .why{color:var(--dim);font-size:12px;margin-bottom:5px}
-  .note{color:#6b7d99;font-size:11px;margin-bottom:16px;max-width:96ch}
-  h2{font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--dim);
-     margin:24px 0 8px;font-weight:600}
-  .kpis{display:grid;gap:10px;grid-template-columns:repeat(auto-fit,minmax(148px,1fr));
-        margin-bottom:4px}
-  .kpi{background:var(--panel);border:1px solid var(--line);border-radius:4px;padding:11px 13px}
-  .kpi .l{font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--dim)}
-  .kpi .v{font-size:21px;font-weight:700;margin-top:3px}
-  .kpi .s{font-size:11px;color:var(--dim);margin-top:2px}
-  table{border-collapse:collapse;width:100%}
-  th{font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--dim);
-     text-align:right;padding:0 9px 5px;font-weight:600;white-space:nowrap}
-  th:first-child,td:first-child{text-align:left}
-  td{padding:6px 9px;border-top:1px solid var(--line);text-align:right;white-space:nowrap}
-  .rank{color:var(--dim);width:26px}
-  .name{font-weight:600;letter-spacing:.04em}
-  .rate{font-weight:700}
-  .r-hi{color:var(--up)}.r-mid{color:var(--amber)}.r-lo{color:var(--down)}
-  .PROFIT{color:var(--up)}.LOSS{color:var(--down)}.FLAT{color:var(--flat)}
-  .dim{color:var(--dim)}
-  .dot{display:inline-block;width:6px;height:6px;border-radius:50%;background:#3a4657;
-       margin-right:6px;vertical-align:middle}
-  .live .dot{background:var(--up)}
-  .kill{background:#3a0d0d;border:1px solid var(--red);color:#ffb3b3;padding:8px 12px;
-        border-radius:4px;margin-bottom:14px;display:none}
-  .tape{font-size:11px}
-  .two{display:grid;gap:18px;grid-template-columns:repeat(auto-fit,minmax(330px,1fr))}
-  .grid{display:grid;gap:11px;grid-template-columns:repeat(auto-fit,minmax(258px,1fr))}
-  .mk{background:var(--panel);border:1px solid var(--line);border-radius:4px;padding:10px 12px}
-  .mk .h{display:flex;align-items:baseline;gap:8px;margin-bottom:5px}
-  .mk .sym{font-size:15px;font-weight:700;letter-spacing:.06em;color:var(--amber)}
-  .mk .px{font-size:13px}
-  .mk .clk{margin-left:auto;color:var(--dim);font-size:12px}
-  .mk .r{display:flex;justify-content:space-between;font-size:11px;color:var(--dim);
-         padding:2px 0}
-  .mk .r b{color:var(--ink);font-weight:600}
+:root{
+  --bg:#0d1117; --panel:#161b22; --line:#26303d; --ink:#e6edf3;
+  --dim:#8b949e; --faint:#5a636d;
+  --up:#3fb950; --down:#f85149; --warn:#d29922; --accent:#58a6ff;
+  --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);
+  font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+  padding:18px 20px 60px}
+h1{font-size:15px;font-weight:600;margin:0;letter-spacing:.3px}
+h2{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.9px;
+  color:var(--dim);margin:0 0 10px}
+.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
+.up{color:var(--up)} .down{color:var(--down)} .warn{color:var(--warn)}
+.dim{color:var(--dim)} .faint{color:var(--faint)}
+
+header{display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;
+  padding-bottom:14px;border-bottom:1px solid var(--line);margin-bottom:18px}
+header .tag{font-size:10px;text-transform:uppercase;letter-spacing:1px;
+  padding:3px 7px;border-radius:4px;background:#1f6feb22;color:var(--accent);
+  border:1px solid #1f6feb44}
+header .when{margin-left:auto;font-size:12px;color:var(--faint)}
+
+/* headline numbers */
+.hero{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));
+  gap:1px;background:var(--line);border:1px solid var(--line);
+  border-radius:8px;overflow:hidden;margin-bottom:20px}
+.hero div{background:var(--panel);padding:14px 16px}
+.hero .k{font-size:10px;text-transform:uppercase;letter-spacing:.9px;
+  color:var(--dim);margin-bottom:6px}
+.hero .v{font-size:26px;font-weight:600;line-height:1.1;font-family:var(--mono);
+  font-variant-numeric:tabular-nums}
+.hero .sub{font-size:11px;color:var(--faint);margin-top:4px}
+
+.grid{display:grid;grid-template-columns:1fr;gap:18px}
+@media(min-width:1100px){.grid.two{grid-template-columns:1.55fr 1fr}}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:8px;
+  padding:15px 16px}
+
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{text-align:right;font-size:10px;text-transform:uppercase;letter-spacing:.7px;
+  color:var(--dim);font-weight:600;padding:0 0 8px;border-bottom:1px solid var(--line)}
+th:first-child,td:first-child{text-align:left}
+td{padding:7px 0;border-bottom:1px solid #1c232c;text-align:right;
+  font-family:var(--mono);font-variant-numeric:tabular-nums}
+td:first-child{font-family:inherit}
+tr:last-child td{border-bottom:none}
+.scroll{overflow-x:auto}
+
+.dot{display:inline-block;width:7px;height:7px;border-radius:50%;
+  margin-right:7px;vertical-align:1px}
+.on{background:var(--up)} .off{background:var(--down)}
+.coin{font-weight:600}
+.bar{height:3px;background:#21262d;border-radius:2px;overflow:hidden;
+  margin-top:5px;width:70px;margin-left:auto}
+.bar i{display:block;height:100%;background:var(--accent)}
+.kv{display:flex;justify-content:space-between;padding:6px 0;
+  border-bottom:1px solid #1c232c;font-size:13px}
+.kv:last-child{border-bottom:none}
+.kv span:last-child{font-family:var(--mono);font-variant-numeric:tabular-nums}
+.note{font-size:11px;color:var(--faint);margin-top:10px;line-height:1.5}
+.err{background:#f8514922;border:1px solid #f8514955;color:#ffa198;
+  padding:9px 12px;border-radius:6px;font-size:12px;margin-bottom:16px}
+.feed{font-family:var(--mono);font-size:11.5px;line-height:1.85}
+.feed div{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 </style>
-<div class="wrap">
-  <h1>* LIVE - real money</h1>
-  <div class="why" id="why">loading...</div>
-  <div class="note">Success counts every closed trade. Fill rate is separate and just as
-    important: an order that never fills is not a loss, it is an opportunity the market
-    took back. Both have to work.</div>
-  <div class="kill" id="kill">LIVE_KILL present - trading halted</div>
 
-  <div class="kpis" id="kpis"></div>
-
-  <h2>Markets <span class="dim">- what each trader is watching right now</span></h2>
-  <div class="grid" id="markets"></div>
-
-  <h2>Live vs shadow <span class="dim">- same signals, same tick, perfect fills</span></h2>
-  <div class="note" style="margin-bottom:9px">The shadow book runs the identical strategy
-    inside the same process and fills every order at the quoted price. Nothing else differs,
-    so the gap between the two columns is execution cost and nothing else. A large negative
-    gap means the signal is real but we cannot reach it.</div>
-  <table><thead><tr>
-    <th>#</th><th>Coin</th><th>Success</th><th>Won-Lost</th><th>Closed</th>
-    <th>Live P/L</th><th>Shadow P/L</th><th>Gap</th><th>Shadow trades</th>
-    <th>Fill rate</th><th>Fills</th><th>Attempts</th><th>Spread</th><th>Status</th>
-  </tr></thead><tbody id="coins"></tbody></table>
-
-  <div class="two">
-    <div>
-      <h2>Fill rate by book staleness</h2>
-      <table><thead><tr><th>Book age</th><th>Orders</th><th>Filled</th><th>Rate</th></tr></thead>
-        <tbody id="buckets"></tbody></table>
+<header>
+  <h1>Kalshi 15m</h1>
+  <span class="tag">live · real money</span>
+  <span class="when" id="when">…</span>
+</header>
+<div id="err"></div>
+<div class="hero" id="hero"></div>
+<div class="grid two">
+  <div class="card">
+    <h2>Per asset</h2>
+    <div class="scroll"><table id="coins"></table></div>
+    <div class="note" id="coinnote"></div>
+  </div>
+  <div>
+    <div class="card" style="margin-bottom:18px">
+      <h2>Risk</h2><div id="risk"></div>
     </div>
-    <div>
-      <h2>Why orders are refused</h2>
-      <table><thead><tr><th>Reason</th><th>Count</th></tr></thead><tbody id="reasons"></tbody></table>
+    <div class="card" style="margin-bottom:18px">
+      <h2>Execution</h2><div id="exec"></div>
+    </div>
+    <div class="card">
+      <h2>Recent fills</h2><div class="feed" id="feed"></div>
     </div>
   </div>
-
-  <h2>Recent orders</h2>
-  <table class="tape"><thead><tr><th>Time</th><th>Coin</th><th>Side</th><th>Limit</th>
-    <th>Filled</th><th>At</th><th>Book age</th><th>RT</th><th>Status</th></tr></thead>
-    <tbody id="tape"></tbody></table>
 </div>
+
 <script>
-const pct = v => (v === null || v === undefined) ? "-" : (v*100).toFixed(0) + "%";
-const ms  = v => v ? Math.round(v) + "ms" : "-";
-const money = v => (v >= 0 ? "+" : "-") + "$" + Math.abs(v).toFixed(4);
-const tag = v => v > 0.0001 ? "PROFIT" : v < -0.0001 ? "LOSS" : "FLAT";
-const rateCls = r => r === null ? "dim" : r >= .6 ? "r-hi" : r >= .45 ? "r-mid" : "r-lo";
-const kpi = (l,v,s,c) => `<div class="kpi"><div class="l">${l}</div>
-  <div class="v ${c||''}">${v}</div><div class="s">${s||""}</div></div>`;
+const $=i=>document.getElementById(i);
+const money=n=>(n==null?"—":(n<0?"−$":"$")+Math.abs(n).toFixed(2));
+const pct=n=>n==null?"—":(n*100).toFixed(n>=0.995?0:1)+"%";
+const cls=n=>n==null?"":(n>0?"up":n<0?"down":"dim");
 
-async function tick() {
-  try {
-    const r = await fetch("api/status", {cache:"no-store"});
-    const d = await r.json(); const st = d.state;
-    document.getElementById("kill").style.display = st.killed ? "block" : "none";
-
-    const pnl = parseFloat(st.realized || 0);
-    const lead = (d.coins||[]).filter(c => c.closed)
-                   .sort((a,b) => b.pnl - a.pnl)[0];
-    document.getElementById("why").textContent = lead
-      ? `${lead.label} leads: ${money(lead.pnl)} on ${lead.closed} closed  |  micro only  |  max ${st.max_contracts}/asset`
-      : `micro only  |  max ${st.max_contracts} contracts per asset  |  no closed trades yet`;
-
-    document.getElementById("kpis").innerHTML =
-      kpi("Success", pct(d.win_rate), `${d.wins} of ${d.closed} closed`, rateCls(d.win_rate)) +
-      kpi("Realised P/L", money(pnl), "cap $15/day", tag(pnl)) +
-      kpi("Fill rate", pct(d.rate), `${d.fills} of ${d.attempts} orders`, rateCls(d.rate)) +
-      kpi("Round trip", ms(d.latency.median), "p90 " + ms(d.latency.p90)) +
-      kpi("Max size", st.max_contracts, "per asset") +
-      kpi("Shadow P/L", money(d.shadow_pnl), `${d.shadow_trades} perfect-fill trades`,
-          tag(d.shadow_pnl)) +
-      kpi("Execution gap", money(d.gap), "live minus shadow", tag(d.gap));
-
-    const rows = (d.coins||[]).slice().sort((a,b) =>
-      (b.win_rate ?? -1) - (a.win_rate ?? -1) || b.closed - a.closed || b.fills - a.fills);
-    document.getElementById("coins").innerHTML = rows.map((c,i) => `
-      <tr class="${c.running?'live':''}">
-        <td class="rank">${i+1}</td>
-        <td class="name"><span class="dot"></span>${c.label}</td>
-        <td class="rate ${rateCls(c.win_rate)}">${pct(c.win_rate)}</td>
-        <td>${c.wins}-${c.losses}</td>
-        <td class="dim">${c.closed}</td>
-        <td class="${tag(c.pnl)}">${money(c.pnl)}</td>
-        <td class="${tag(c.shadow_pnl)}">${money(c.shadow_pnl)}</td>
-        <td class="${tag(c.gap)}">${money(c.gap)}</td>
-        <td class="dim">${c.shadow_trades}</td>
-        <td class="${rateCls(c.rate)}">${pct(c.rate)}</td>
-        <td class="${c.fills?'PROFIT':'dim'}">${c.fills}</td>
-        <td class="dim">${c.attempts}</td>
-        <td class="${c.spread_c==null?'dim':c.spread_c<=1?'PROFIT':c.spread_c<=3?'':'LOSS'}">${
-          c.spread_c==null?"-":c.spread_c.toFixed(1)+"c"}</td>
-        <td class="${c.excluded?'LOSS':'dim'}">${
-          c.excluded ? "excluded" : c.running ? "running" : "STALE"}</td></tr>`).join("");
-
-    const px = v => v === null || v === undefined ? "-" :
-      (Math.abs(v) >= 100 ? v.toLocaleString(undefined,{maximumFractionDigits:2})
-       : Math.abs(v) >= 1 ? v.toFixed(4) : v.toFixed(6));
-    document.getElementById("markets").innerHTML = (d.coins||[]).map(c => `
-      <div class="mk ${c.running?'live':''}">
-        <div class="h"><span class="sym"><span class="dot"></span>${c.label}</span>
-          <span class="px">${px(c.spot)}</span>
-          <span class="clk">${c.clock||"-"}</span></div>
-        <div class="r"><span>strike</span><b>${px(c.strike)}</b></div>
-        <div class="r"><span>distance</span>
-          <b class="${c.dist_bps>0?'PROFIT':c.dist_bps<0?'LOSS':''}">${
-            c.dist_bps==null?"-":(c.dist_bps>0?"+":"")+c.dist_bps.toFixed(1)+" bps"}</b></div>
-        <div class="r"><span>spread</span><b class="${
-          c.spread_c==null?'dim':c.spread_c<=1?'PROFIT':c.spread_c<=3?'':'LOSS'}">${
-          c.spread_c==null?"-":c.spread_c.toFixed(1)+"c"}</b></div>
-        <div class="r"><span>book</span><b>${c.yes_bid==null?"-":
-            c.yes_bid.toFixed(2)+" / "+c.yes_ask.toFixed(2)}</b></div>
-        <div class="r"><span>micro P(yes)</span><b>${c.p_yes==null?"-":c.p_yes.toFixed(3)}
-          <span class="dim">u ${c.uncertainty==null?"-":c.uncertainty.toFixed(2)}</span></b></div>
-      </div>`).join("");
-
-    document.getElementById("buckets").innerHTML = (d.buckets||[]).map(b => `
-      <tr><td>${b.k}</td><td>${b.n}</td><td class="${b.f?'PROFIT':'dim'}">${b.f}</td>
-      <td class="${rateCls(b.n?b.f/b.n:null)}">${pct(b.n?b.f/b.n:null)}</td></tr>`).join("")
-      || '<tr><td class="dim" colspan="4">no instrumented orders yet</td></tr>';
-
-    document.getElementById("reasons").innerHTML = (d.reasons||[]).map(x =>
-      `<tr><td class="dim">${x[0]}</td><td>${x[1]}</td></tr>`).join("")
-      || '<tr><td class="dim" colspan="2">none</td></tr>';
-
-    document.getElementById("tape").innerHTML = (d.recent||[]).map(o => `
-      <tr><td>${(o.ts||"").slice(11,19)}</td><td>${(o.asset||"").toUpperCase()}</td>
-      <td>${o.side||""}</td><td>${o.quoted_px||""}</td>
-      <td class="${o.filled?'PROFIT':'LOSS'}">${o.filled}</td><td>${o.fill_px||"-"}</td>
-      <td class="dim">${ms(o.book_age_ms)}</td><td class="dim">${ms(o.order_ms)}</td>
-      <td class="dim">${(o.status||"").slice(0,30)}</td></tr>`).join("");
-  } catch(e) {}
+function hero(d){
+  const x=d.exchange||{}, e=d.era||{};
+  const cells=[
+    ["Balance", money(x.balance), "from Kalshi"],
+    ["Today", money(x.day), (x.settled||0)+" settled · "+(x.winners||0)+" won"],
+    ["Fill rate", pct(e.rate), e.fills+" of "+e.attempts+" since the pricing fix"],
+    ["Win rate", pct(x.settled?x.winners/x.settled:null), "breakeven ≈ 12.7% at 8x"],
+    ["Open", (x.open==null?"—":x.open), "positions right now"],
+  ];
+  $("hero").innerHTML=cells.map(([k,v,s],i)=>
+    `<div><div class="k">${k}</div>
+     <div class="v ${i===1?cls(x.day):""}">${v}</div>
+     <div class="sub">${s}</div></div>`).join("");
 }
-tick(); setInterval(tick, 3000);
+
+function coins(d){
+  const rows=(d.coins||[]).slice().sort((a,b)=>(b.pnl||0)-(a.pnl||0));
+  let h=`<tr><th>Asset</th><th>Window</th><th>Dist</th><th>Ask</th>
+     <th>P(yes)</th><th>Fills</th><th>W–L</th><th>Spread</th></tr>`;
+  for(const c of rows){
+    const dist=c.dist_bps==null?"—":(c.dist_bps>0?"+":"")+c.dist_bps.toFixed(1);
+    h+=`<tr>
+      <td><span class="dot ${c.running?"on":"off"}"></span>
+        <span class="coin">${c.label}</span>
+        ${c.excluded?' <span class="warn" style="font-size:10px">excl</span>':""}</td>
+      <td class="dim">${c.clock||"—"}</td>
+      <td class="${cls(c.dist_bps)}">${dist}</td>
+      <td>${c.yes_ask==null?"—":c.yes_ask.toFixed(2)}</td>
+      <td class="dim">${c.p_yes==null?"—":c.p_yes.toFixed(2)}</td>
+      <td>${c.fills||0}</td>
+      <td><span class="up">${c.wins||0}</span><span class="faint">–</span><span class="down">${c.losses||0}</span></td>
+      <td class="${c.spread_c>=4?"warn":"dim"}">${c.spread_c==null?"—":c.spread_c.toFixed(1)+"¢"}</td>
+    </tr>`;
+  }
+  $("coins").innerHTML=h;
+  $("coinnote").textContent="Dist is basis points from spot to strike. "
+    +"Ask and P(yes) are the current window. Per-asset W–L comes from our "
+    +"journal and undercounts; the headline uses Kalshi settlements.";
+}
+
+function risk(d){
+  const s=d.state||{}, x=d.exchange||{};
+  const used=Math.min(1,Math.max(0,(-(x.day||0))/15));
+  const cap=s.max_contracts, stage=s.stage;
+  const stages=[1,3,8], next=stages[(stage||0)+1];
+  $("risk").innerHTML=[
+    ["Contract cap", cap+(next?` <span class="faint">→ ${next} at 10 fills</span>`:"")],
+    ["Stage", `${stage} <span class="faint">(${s.orders_at_stage||0} fills in)</span>`],
+    ["Daily stop", `<span class="${used>0.6?"down":"dim"}">${money(-(x.day||0)>0?-(x.day):0)} of $15</span>`],
+    ["Equity floor", "$50"],
+    ["Halted", s.killed||x.halted?`<span class="down">${x.halted||"killed"}</span>`:'<span class="up">no</span>'],
+  ].map(([k,v])=>`<div class="kv"><span class="dim">${k}</span><span>${v}</span></div>`).join("");
+}
+
+function exec(d){
+  const e=d.era||{}, l=d.latency||{};
+  let h=[
+    ["Fill rate now", pct(e.rate)+` <span class="faint">${e.fills}/${e.attempts}</span>`],
+    ["All time", pct(e.all_rate)+` <span class="faint">${e.all_fills}/${e.all_attempts}</span>`],
+    ["Order latency", (l.median==null?"—":l.median+"ms")+` <span class="faint">p90 ${l.p90||"—"}ms</span>`],
+  ].map(([k,v])=>`<div class="kv"><span class="dim">${k}</span><span>${v}</span></div>`).join("");
+  const r=e.reasons||[];
+  h+=`<div class="note">${r.length
+    ? "Unfilled since the fix: "+r.map(([k,n])=>`${k} ×${n}`).join(", ")
+    : "No unfilled orders since the pricing fix. The all-time rate includes two "
+      +"bugs that no longer exist — stale-quote limits that could not cross, and "
+      +"orders sent to the wrong exchange index."}</div>`;
+  $("exec").innerHTML=h;
+}
+
+function feed(d){
+  const r=(d.recent||[]).filter(x=>+x.filled>0).slice(0,11);
+  $("feed").innerHTML=r.length?r.map(x=>{
+    const cost=x.side==="yes"?+x.fill_px:1-(+x.fill_px);
+    return `<div><span class="faint">${(x.ts||"").slice(11,19)}</span>
+      <span class="coin">${(x.asset||"").toUpperCase()}</span>
+      ${x.side} ${x.filled}× <span class="dim">@${cost.toFixed(3)}</span>
+      <span class="faint">${(1/cost).toFixed(0)}x</span></div>`;
+  }).join(""):'<div class="faint">no fills yet</div>';
+}
+
+async function tick(){
+  try{
+    const d=await (await fetch("api/status",{cache:"no-store"})).json();
+    $("err").innerHTML=(d.exchange&&d.exchange.error)
+      ? `<div class="err">Kalshi read failed: ${d.exchange.error}</div>`:"";
+    hero(d);coins(d);risk(d);exec(d);feed(d);
+    $("when").textContent=new Date().toLocaleTimeString();
+  }catch(e){
+    $("err").innerHTML=`<div class="err">dashboard fetch failed: ${e}</div>`;
+  }
+}
+tick();setInterval(tick,5000);
 </script>
