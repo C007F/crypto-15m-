@@ -222,6 +222,18 @@ def _fill_rate():
     return (rate > 0.5, f"{len(got)}/{len(cur)} = {rate:.0%} since the pricing fix")
 
 
+def _observer_fresh():
+    """The observer crash-looped for 80 minutes while 'services running'
+    stayed green - systemd kept resurrecting it into the same ValueError.
+    Liveness is not health; check the OUTPUT is recent."""
+    p = ROOT / "research" / "pending.json"
+    try:
+        age = time.time() - p.stat().st_mtime
+    except OSError:
+        return False, "observer has never written"
+    return age < 900, f"observer state written {int(age)}s ago"
+
+
 def _data_growing():
     out = []
     for name, path, floor in [
@@ -270,6 +282,7 @@ for name, fn in [
     ("daily cap headroom", _daily_cap_live),
     ("journal reconciles to exchange", _reconciles),
     ("fill rate healthy", _fill_rate),
+    ("observer actually producing", _observer_fresh),
     ("research data growing", _data_growing),
     ("backup ran", _backup_recent),
 ]:
