@@ -41,6 +41,12 @@ def decide(
     if features.market.spread > settings.max_spread:
         return None
 
+    # Price band. The cheap leg only pays inside 0.02-0.50; outside it the
+    # measured edge is negative on both ends, so refuse before sizing.
+    cheap = min(features.market.yes_ask, features.market.no_ask)
+    if not (settings.min_cost <= cheap <= settings.max_cost):
+        return None
+
     report = pick_side(
         p_yes=view.p_yes,
         uncertainty=view.uncertainty,

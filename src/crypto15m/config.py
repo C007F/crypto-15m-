@@ -37,6 +37,8 @@ class Settings:
     entry_start_sec: int
     entry_cutoff_sec: int
     flatten_cutoff_sec: int
+    min_cost: Decimal
+    max_cost: Decimal
     poll_sec: float
     default_vol_bps: Decimal
     data_dir: Path
@@ -109,6 +111,13 @@ def load_settings() -> Settings:
         # later than this - the liquid zone is the last few minutes - so the
         # two boundaries are deliberately not the same number.
         flatten_cutoff_sec=int(os.getenv("FLATTEN_CUTOFF_SEC", "150")),
+        # Price band for the cheap leg, from 2097 causal observations:
+        # 0.02-0.50 ran +3.77% over implied (z=+4.10, p=0.00002, +14.4% of
+        # stake net of fees). Below 0.02 is a graveyard - 498 samples, 0.2%
+        # actual against 0.7% implied, -73% of stake. Above 0.50 the sign
+        # flips: 867 samples at -6.9%, p<0.00001.
+        min_cost=_dec("MIN_COST", "0.02"),
+        max_cost=_dec("MAX_COST", "0.50"),
         poll_sec=float(os.getenv("POLL_SEC", "1.0")),
         default_vol_bps=_dec("DEFAULT_VOL_BPS", asset.vol_bps),
         data_dir=data_dir,

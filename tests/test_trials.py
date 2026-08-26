@@ -44,6 +44,8 @@ def settings(tmp: Path) -> Settings:
         slippage_ticks=0,
         entry_start_sec=0,
         entry_cutoff_sec=0,
+        min_cost=Decimal("0"),
+        max_cost=Decimal("1"),
         flatten_cutoff_sec=0,
         poll_sec=1.0,
         default_vol_bps=Decimal("80"),
