@@ -233,7 +233,7 @@ function fmtTs(iso){
 function feed(d){
   const r=d.attempts_feed||[];
   if(!r.length){$("feed").innerHTML='<tr><td class="faint">no attempts yet</td></tr>';return;}
-  let h=`<tr><th>Time</th><th></th><th>Asset</th><th>Side</th><th>Qty</th>
+  let h=`<tr><th>Time</th><th>Fill</th><th>Asset</th><th>Side</th><th>Qty</th>
     <th>Cost</th><th>Pays</th><th class="sm-hide">Left</th>
     <th>Result</th><th>Net</th></tr>`;
   for(const x of r){
@@ -247,7 +247,7 @@ function feed(d){
     } else { res='<span class="warn">open</span>'; }
     h+=`<tr>
       <td class="dim" style="font-family:var(--mono)">${fmtTs(x.ts)}</td>
-      <td class="${hit?"up":"down"}">${hit?"\u25cf":"\u25cb"}</td>
+      <td class="${hit?"up":"down"}" title="${hit?"order filled":"order missed - accepted but nothing crossed"}">${hit?"\u25cf":"\u25cb"}</td>
       <td><span class="coin">${(x.asset||"").toUpperCase()}</span></td>
       <td class="dim">${x.side||""}</td>
       <td>${hit?x.filled:0}/${x.requested||0}</td>
