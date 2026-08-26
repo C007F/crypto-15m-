@@ -251,6 +251,10 @@ function exec(d){
   $("exec").innerHTML=h;
 }
 
+function mss(sec){
+  sec=Math.max(0,Math.round(sec));
+  return `${Math.floor(sec/60)}:${String(sec%60).padStart(2,"0")}`;
+}
 function fmtTs(iso){
   // raw ts is UTC; render in the viewer's local time (Central) with the date,
   // because a feed that quietly mixes yesterday and today in UTC misleads.
@@ -270,7 +274,8 @@ function feed(d){
     <th data-tip="contracts filled / contracts requested">Qty</th>
     <th data-tip="what one contract cost us (a NO at yes-price 0.90 costs 0.10)">Cost</th>
     <th data-tip="gross payoff multiple if it wins: a 0.10 contract pays $1.00 = 10x">Pays</th>
-    <th class="sm-hide" data-tip="seconds remaining in the 15-min window when we entered">Left</th>
+    <th class="sm-hide" data-tip="how deep into the 15-minute window the order was placed (0:00 = window open)">Opened at</th>
+    <th data-tip="time remaining to expiry when the order was placed">Left</th>
     <th data-tip="WON settled our way \u00b7 lost settled against us \u00b7 cut we exited early \u00b7 miss never filled \u00b7 open still riding">Result</th>
     <th data-tip="net profit after fees, from the exchange-settled close">Net</th></tr>`;
   for(const x of r){
@@ -290,7 +295,8 @@ function feed(d){
       <td>${hit?x.filled:0}/${x.requested||0}</td>
       <td>${px?px.toFixed(3):"\u2014"}</td>
       <td class="dim">${px?(1/px).toFixed(0)+"x":"\u2014"}</td>
-      <td class="dim sm-hide">${Math.round(x.remaining_sec||0)}s</td>
+      <td class="dim sm-hide">${mss(900-(x.remaining_sec||0))}</td>
+      <td class="dim">${mss(x.remaining_sec||0)}</td>
       <td>${res}</td>
       <td>${net}</td>
     </tr>`;
