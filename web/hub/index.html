@@ -42,7 +42,6 @@
   <div class="brand">Chester</div>
   <div class="grp">Trading</div>
   <a data-p="live/"   class="hot"><span class="dot"></span>Live | real money</a>
-  <a data-p="crypto/"><span class="dot"></span>Crypto paper</a>
   <a data-p="beast/"><span class="dot"></span>Grok Beast</a>
   <div class="grp">Markets</div>
   <a data-p=""><span class="dot"></span>Desk</a>
@@ -79,11 +78,14 @@
     }
     try {
       const d = await (await fetch(BASE + "live/api/status", {cache:"no-store"})).json();
-      const pnl = parseFloat(d.state.realized || 0);
+      // exchange figures, not the journal - the journal undercounts
+      const x = d.exchange || {}, e = d.era || {};
+      const day = x.day == null ? null : +x.day;
       document.getElementById("foot").innerHTML =
-        `live: ${d.fills}/${d.attempts} filled<br>` +
-        `today: ${(pnl>=0?"+":"-")}$${Math.abs(pnl).toFixed(4)}<br>` +
-        `max ${d.state.max_contracts} contract(s)`;
+        `bal $${x.balance == null ? "-" : (+x.balance).toFixed(2)}<br>` +
+        `today ${day == null ? "-"
+           : (day >= 0 ? "+" : "-") + "$" + Math.abs(day).toFixed(2)}<br>` +
+        `fills ${e.fills}/${e.attempts} &middot; max ${d.state.max_contracts}`;
     } catch (e) {}
   }
   health(); setInterval(health, 15000);

@@ -12,7 +12,7 @@
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--ink);
   font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
-  padding:18px 20px 60px}
+  padding:14px 16px 48px}
 h1{font-size:15px;font-weight:600;margin:0;letter-spacing:.3px}
 h2{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.9px;
   color:var(--dim);margin:0 0 10px}
@@ -28,15 +28,15 @@ header .tag{font-size:10px;text-transform:uppercase;letter-spacing:1px;
 header .when{margin-left:auto;font-size:12px;color:var(--faint)}
 
 /* headline numbers */
-.hero{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));
+.hero{display:grid;grid-template-columns:repeat(5,1fr);
   gap:1px;background:var(--line);border:1px solid var(--line);
-  border-radius:8px;overflow:hidden;margin-bottom:20px}
-.hero div{background:var(--panel);padding:14px 16px}
-.hero .k{font-size:10px;text-transform:uppercase;letter-spacing:.9px;
-  color:var(--dim);margin-bottom:6px}
-.hero .v{font-size:26px;font-weight:600;line-height:1.1;font-family:var(--mono);
-  font-variant-numeric:tabular-nums}
-.hero .sub{font-size:11px;color:var(--faint);margin-top:4px}
+  border-radius:8px;overflow:hidden;margin-bottom:16px}
+.hero div{background:var(--panel);padding:11px 13px;min-width:0}
+.hero .k{font-size:9.5px;text-transform:uppercase;letter-spacing:.8px;
+  color:var(--dim);margin-bottom:3px}
+.hero .v{font-size:22px;font-weight:600;line-height:1.15;font-family:var(--mono);
+  font-variant-numeric:tabular-nums;white-space:nowrap}
+.hero .sub{font-size:10.5px;color:var(--faint);margin-top:2px;line-height:1.35}
 
 .grid{display:grid;grid-template-columns:1fr;gap:18px}
 @media(min-width:1100px){.grid.two{grid-template-columns:1.55fr 1fr}}
@@ -44,11 +44,12 @@ header .when{margin-left:auto;font-size:12px;color:var(--faint)}
   padding:15px 16px}
 
 table{width:100%;border-collapse:collapse;font-size:13px}
-th{text-align:right;font-size:10px;text-transform:uppercase;letter-spacing:.7px;
-  color:var(--dim);font-weight:600;padding:0 0 8px;border-bottom:1px solid var(--line)}
-th:first-child,td:first-child{text-align:left}
-td{padding:7px 0;border-bottom:1px solid #1c232c;text-align:right;
-  font-family:var(--mono);font-variant-numeric:tabular-nums}
+th{text-align:right;font-size:10px;text-transform:uppercase;letter-spacing:.6px;
+  color:var(--dim);font-weight:600;padding:0 0 8px 14px;white-space:nowrap;
+  border-bottom:1px solid var(--line)}
+th:first-child,td:first-child{text-align:left;padding-left:0}
+td{padding:7px 0 7px 14px;border-bottom:1px solid #1c232c;text-align:right;
+  white-space:nowrap;font-family:var(--mono);font-variant-numeric:tabular-nums}
 td:first-child{font-family:inherit}
 tr:last-child td{border-bottom:none}
 .scroll{overflow-x:auto}
@@ -69,6 +70,28 @@ tr:last-child td{border-bottom:none}
   padding:9px 12px;border-radius:6px;font-size:12px;margin-bottom:16px}
 .feed{font-family:var(--mono);font-size:11.5px;line-height:1.85}
 .feed div{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+@media(max-width:760px){
+  body{padding:11px 12px 40px}
+  header{gap:9px;padding-bottom:10px;margin-bottom:13px}
+  header .when{font-size:11px}
+  /* 2 across, last one full width, so nothing is a lonely half-empty box */
+  .hero{grid-template-columns:1fr 1fr}
+  .hero div{padding:9px 11px}
+  .hero div:last-child{grid-column:1/-1;display:flex;align-items:baseline;gap:9px}
+  .hero div:last-child .k{margin:0}
+  .hero div:last-child .v{font-size:15px}
+  .hero div:last-child .sub{margin:0}
+  .hero .v{font-size:19px}
+  .card{padding:12px 13px}
+  .grid{gap:13px}
+  .card[style]{margin-bottom:13px!important}
+  table{font-size:12.5px}
+  th,td{padding-left:11px}
+  /* least useful columns on a small screen */
+  .sm-hide{display:none}
+  .feed{font-size:11px}
+}
 </style>
 
 <header>
@@ -121,7 +144,7 @@ function hero(d){
 function coins(d){
   const rows=(d.coins||[]).slice().sort((a,b)=>(b.pnl||0)-(a.pnl||0));
   let h=`<tr><th>Asset</th><th>Window</th><th>Dist</th><th>Ask</th>
-     <th>P(yes)</th><th>Fills</th><th>W–L</th><th>Spread</th></tr>`;
+     <th class="sm-hide">P(yes)</th><th>Fills</th><th>W/L</th><th class="sm-hide">Spread</th></tr>`;
   for(const c of rows){
     const dist=c.dist_bps==null?"—":(c.dist_bps>0?"+":"")+c.dist_bps.toFixed(1);
     h+=`<tr>
@@ -131,10 +154,10 @@ function coins(d){
       <td class="dim">${c.clock||"—"}</td>
       <td class="${cls(c.dist_bps)}">${dist}</td>
       <td>${c.yes_ask==null?"—":c.yes_ask.toFixed(2)}</td>
-      <td class="dim">${c.p_yes==null?"—":c.p_yes.toFixed(2)}</td>
+      <td class="dim sm-hide">${c.p_yes==null?"—":c.p_yes.toFixed(2)}</td>
       <td>${c.fills||0}</td>
       <td><span class="up">${c.wins||0}</span><span class="faint">–</span><span class="down">${c.losses||0}</span></td>
-      <td class="${c.spread_c>=4?"warn":"dim"}">${c.spread_c==null?"—":c.spread_c.toFixed(1)+"¢"}</td>
+      <td class="sm-hide ${c.spread_c>=4?"warn":"dim"}">${c.spread_c==null?"—":c.spread_c.toFixed(1)+"¢"}</td>
     </tr>`;
   }
   $("coins").innerHTML=h;
