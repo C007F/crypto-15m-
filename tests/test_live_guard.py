@@ -459,4 +459,61 @@ class BankTheProfit(unittest.TestCase):
     def test_it_is_checked_before_holding_to_expiry(self):
         from pathlib import Path
         src = (Path(__file__).resolve().parents[1] / "src/crypto15m/trials.py").read_text()
-        self.assertIn("bankable(pos.side, pos.avg_price, pos.contracts", src)
+        # match on structure, not exact formatting - the call now wraps lines
+        compact = " ".join(src.split())
+        self.assertIn("bankable( pos.side, pos.avg_price, pos.contracts", compact)
+
+
+class ScaleOut(unittest.TestCase):
+    """Bank most of a winner, let a runner ride.
+
+    All-or-nothing forced a choice between the SOL trade that made $2.30 by
+    settling and the safety of banking $0.24. Scaling takes the certain money
+    and keeps a ticket on the thesis.
+    """
+
+    def test_partial_close_leaves_the_rest_open(self):
+        from datetime import datetime, timezone
+        from decimal import Decimal
+        from crypto15m.portfolio.paper import PaperPortfolio
+        p = PaperPortfolio(Decimal("100"))
+        p.apply_open(now=datetime.now(timezone.utc), ticker="T", side="yes",
+                     contracts=Decimal("3"), price=Decimal("0.22"),
+                     fee=Decimal("0.03"), permit=None)
+        p.reduce(datetime.now(timezone.utc), "T", contracts=Decimal("2"),
+                 bid=Decimal("0.40"), fee=Decimal("0.02"))
+        pos = p.positions["T"]
+        self.assertEqual(pos.contracts, Decimal("1"))
+        self.assertEqual(pos.avg_price, Decimal("0.22"), "cost basis must not move")
+        self.assertGreater(p.realized_pnl_today, 0)
+
+    def test_reducing_everything_is_a_full_close(self):
+        from datetime import datetime, timezone
+        from decimal import Decimal
+        from crypto15m.portfolio.paper import PaperPortfolio
+        p = PaperPortfolio(Decimal("100"))
+        p.apply_open(now=datetime.now(timezone.utc), ticker="T", side="yes",
+                     contracts=Decimal("2"), price=Decimal("0.22"),
+                     fee=Decimal("0.02"), permit=None)
+        p.reduce(datetime.now(timezone.utc), "T", contracts=Decimal("5"),
+                 bid=Decimal("0.40"), fee=Decimal("0.02"))
+        self.assertNotIn("T", p.positions)
+
+    def test_a_single_contract_cannot_be_scaled(self):
+        from decimal import Decimal
+        keep = max(Decimal("1"), (Decimal("1") * Decimal("0.34")).to_integral_value())
+        self.assertEqual(keep, Decimal("1"), "1 contract must bank whole, not partially")
+
+    def test_a_runner_is_always_kept(self):
+        from decimal import Decimal
+        for n in (2, 3, 5, 8):
+            keep = max(Decimal("1"),
+                       (Decimal(n) * Decimal("0.34")).to_integral_value(rounding="ROUND_DOWN"))
+            self.assertGreaterEqual(keep, 1, f"{n} contracts left no runner")
+            self.assertLess(keep, n, f"{n} contracts banked nothing")
+
+    def test_a_window_is_only_scaled_once(self):
+        from pathlib import Path
+        src = (Path(__file__).resolve().parents[1] / "src/crypto15m/trials.py").read_text()
+        self.assertIn("frame.market.ticker not in self._scaled", src)
+        self.assertIn('"scaled": sorted(self._scaled),', src)

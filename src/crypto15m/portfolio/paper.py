@@ -111,6 +111,36 @@ class PaperPortfolio:
         self.fills.append(fill)
         return fill
 
+    def reduce(self, now: datetime, ticker: str, *, contracts: Decimal, bid: Decimal,
+               fee: Decimal, kind: str = "scale_out") -> Fill | None:
+        """Close PART of a position, leaving the rest open.
+
+        Scaling out is how a winner can be banked and still be allowed to run:
+        take enough off to lock a profit, let the remainder ride to fair value
+        or settlement. Cost basis is unchanged on the remainder - the fees
+        already paid belong to the whole position, so they stay with it
+        pro-rata rather than being charged twice.
+        """
+        pos = self.positions.get(ticker)
+        if not pos or contracts <= 0:
+            return None
+        n = min(Decimal(contracts), pos.contracts)
+        if n >= pos.contracts:
+            return self.flatten(now, ticker, bid=bid, fee=fee, kind=kind)
+        share = n / pos.contracts
+        entry_fees = pos.fees * share
+        proceeds = n * bid
+        pnl = proceeds - n * pos.avg_price - entry_fees - fee
+        self.cash += proceeds - fee
+        self.realized_pnl_today += pnl
+        self.positions[ticker] = Position(
+            pos.ticker, pos.side, pos.contracts - n, pos.avg_price,
+            pos.fees - entry_fees)
+        fill = Fill(ts=now, ticker=ticker, side=pos.side, contracts=n,
+                    price=bid, fee=fee, kind=kind)
+        self.fills.append(fill)
+        return fill
+
     def flatten(self, now: datetime, ticker: str, *, bid: Decimal, fee: Decimal, kind: str = "flatten") -> Fill | None:
         pos = self.positions.get(ticker)
         if not pos:

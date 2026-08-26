@@ -114,6 +114,7 @@ class TrialBook:
         self.path = settings.data_dir / "accounts" / f"{spec.book_id}.json"
         self._spent: set[str] = set()
         self._attempts: dict[str, int] = {}
+        self._scaled: set[str] = set()      # windows we have already scaled out of
         self._entries: dict[str, dict] = {}
         self.last_action = "boot"
         self.load()
@@ -128,6 +129,7 @@ class TrialBook:
         self.portfolio.load_state(data["portfolio"])
         self._spent = set(data.get("spent") or [])
         self._attempts = dict(data.get("attempts") or {})
+        self._scaled = set(data.get("scaled") or [])
         self._entries = data.get("entries") or {}
         self.last_action = data.get("last_action") or self.last_action
 
@@ -138,6 +140,7 @@ class TrialBook:
             "last_action": self.last_action,
             "spent": sorted(self._spent),
             "attempts": self._attempts,
+            "scaled": sorted(self._scaled),
             "entries": self._entries,
             "portfolio": self.portfolio.to_state(),
         }
@@ -200,7 +203,8 @@ class TrialBook:
             },
         }
 
-    def _live_close(self, client, market, pos, live: bool) -> bool:
+    def _live_close(self, client, market, pos, live: bool,
+                    contracts: Decimal | None = None) -> bool:
         """Send a real closing order. Returns False if it did not go through.
 
         In live mode the paper flatten() only edits our own ledger, so without
@@ -226,8 +230,9 @@ class TrialBook:
         else:
             leg, px = "bid", Decimal("0.99")     # buy from any ask
         try:
+            n = pos.contracts if contracts is None else Decimal(contracts)
             resp = client.place_order(
-                ticker=market.ticker, side=pos.side, count=pos.contracts,
+                ticker=market.ticker, side=pos.side, count=n,
                 price=px, permit=_close_permit(market.ticker, pos.side, px),
                 dry_run=False, yes_leg=leg,
                 market_exchange_index=getattr(market, "exchange_index", 0),
@@ -249,7 +254,7 @@ class TrialBook:
             self.fills.write(FillRecord(
                 ts=datetime.now(timezone.utc).isoformat(timespec="seconds"),
                 asset=self.settings.asset.key, ticker=market.ticker,
-                side=f"exit_{pos.side}", requested=int(pos.contracts),
+                side=f"exit_{pos.side}", requested=int(n),
                 quoted_px=str(px), filled=closed, fill_px=str(close_px or ""),
                 status="exit_filled", remaining_sec=0.0, p_yes=""))
         if closed < 1:
@@ -302,6 +307,7 @@ class TrialBook:
             self.governor.roll_day(snap)
             self._spent.clear()
             self._attempts.clear()
+            self._scaled.clear()
             journal.log("day_roll", {"book": self.spec.book_id, "equity": snap.equity}, frame.market.ticker)
 
         halt = self.governor.observe(snap)
@@ -340,10 +346,42 @@ class TrialBook:
         # caught up to our fair value - whichever comes first. A 15m contract
         # need not be held to expiry: taking the money frees capital for the
         # next mispricing and removes exposure to a late reversal.
-        took_profit = bool(pos) and (
-            bankable(pos.side, pos.avg_price, pos.contracts, frame.market,
-                     Decimal(str(getattr(self.settings.params, "take_profit_net", 0.03))))
-            or edge_realised(pos.side, view, frame.market))
+        # Best of both: SCALE OUT. When a winner clears its fees, bank most of
+        # it and let a runner ride to fair value or settlement. All-or-nothing
+        # forces a choice between the SOL trade that made $2.30 by settling and
+        # the safety of banking $0.24; scaling takes the certain money off the
+        # table and still keeps a lottery ticket on the thesis being right.
+        #
+        # Only possible with 2+ contracts - a single contract cannot be halved,
+        # so those still bank whole.
+        can_bank = bool(pos) and bankable(
+            pos.side, pos.avg_price, pos.contracts, frame.market,
+            Decimal(str(getattr(self.settings.params, "take_profit_net", 0.03))))
+        if (can_bank and pos.contracts >= 2
+                and frame.market.ticker not in self._scaled):
+            keep = (pos.contracts * Decimal("0.34")).to_integral_value(rounding="ROUND_DOWN")
+            keep = max(Decimal("1"), keep)
+            sell = pos.contracts - keep
+            if sell >= 1:
+                bid = frame.market.yes_bid if pos.side == "yes" else frame.market.no_bid
+                fee = taker_fee(sell, bid, frame.market.fee_multiplier)
+                before = self.portfolio.realized_pnl_today
+                if self._live_close(client, frame.market, pos, live, contracts=sell):
+                    self.portfolio.reduce(now, frame.market.ticker, contracts=sell,
+                                          bid=bid, fee=fee)
+                    self._scaled.add(frame.market.ticker)
+                    banked = self.portfolio.realized_pnl_today - before
+                    if self.guard is not None:
+                        self.guard.record_close(banked)
+                    journal.log("scale_out",
+                                {"book": self.spec.book_id, "sold": str(sell),
+                                 "kept": str(keep), "pnl": str(banked)},
+                                frame.market.ticker)
+                    self.last_action = f"banked {sell}, running {keep}"
+                    self.save()
+                    return self.last_action
+
+        took_profit = bool(pos) and (can_bank or edge_realised(pos.side, view, frame.market))
         if pos and (took_profit or
                     should_flatten(pos.side, view, frame.remaining_sec,
                                    self.settings.entry_cutoff_sec)):
