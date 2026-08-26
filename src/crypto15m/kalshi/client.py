@@ -32,6 +32,10 @@ ALLOWED_PREFIXES = (
     "/portfolio/events/orders",
     "/portfolio/positions",
     "/portfolio/fills",
+    # WebSocket upgrade path. Read-only market-data subscription - the WS API
+    # has no order or money-movement commands on these channels, and the
+    # FORBIDDEN word check still applies to it like everything else.
+    "/trade-api/ws",
     "/portfolio/settlements",   # read-only history; what the Kalshi UI shows
 )
 
@@ -228,14 +232,33 @@ class KalshiClient:
         bn = max((Decimal(str(px)), Decimal(str(sz))) for px, sz in no_bids)
         return (Decimal("1") - bn[0], bn[1], Decimal("1") - by[0], by[1])
 
+    # data/books/<ticker>.json, maintained by crypto15m-stream (kalshi/stream.py).
+    # A fresh streamed top is better than a REST read: ~25ms old at worst,
+    # costs zero requests, and cannot 429.
+    BOOKS_DIR = Path(__file__).resolve().parents[3] / "data" / "books"
+    STREAM_FRESH_SEC = 3.0
+
+    def _streamed_top(self, ticker: str) -> tuple | None:
+        try:
+            d = json.loads((self.BOOKS_DIR / f"{ticker}.json").read_text())
+            if time.time() - float(d["ts"]) > self.STREAM_FRESH_SEC:
+                return None
+            return (Decimal(d["yes_ask"]), Decimal(d["yes_ask_size"]),
+                    Decimal(d["no_ask"]), Decimal(d["no_ask_size"]))
+        except (OSError, KeyError, ValueError, json.JSONDecodeError):
+            return None
+
     def with_book(self, q: MarketQuote) -> MarketQuote:
         """Overlay true book prices/sizes onto a summary quote.
 
-        Sets `book_stale` when the overlay could not be applied. The entry gate
-        checks it and declines rather than pricing off the summary quote.
+        Prefers the WebSocket-streamed book; falls back to a REST orderbook
+        read; sets `book_stale` when neither worked so the entry gate declines
+        rather than pricing off the summary quote.
         """
         self.book_stale = False
-        top = self.orderbook_top(q.ticker)
+        top = self._streamed_top(q.ticker)
+        if top is None:
+            top = self.orderbook_top(q.ticker)
         if top is None:
             return q
         yes_ask, yes_sz, no_ask, no_sz = top

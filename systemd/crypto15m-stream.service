@@ -1,0 +1,14 @@
+[Unit]
+Description=Crypto 15m WebSocket book streamer (push, not poll)
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/cam/projects/crypto-15m-bot
+Environment=PYTHONUNBUFFERED=1 PYTHONPATH=/home/cam/projects/crypto-15m-bot/src ASSET=sol
+ExecStart=/home/cam/projects/crypto-15m-bot/.venv/bin/python -m crypto15m.kalshi.stream
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target
