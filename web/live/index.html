@@ -123,6 +123,11 @@ tr.open-row{animation:breathe 2.6s ease-in-out infinite}
   th,td{padding-left:10px}
   .sm-hide{display:none}
 }
+
+tr.excluded td{opacity:.38}
+tr.excluded .coin{color:var(--faint);text-decoration:line-through;
+  text-decoration-color:#ffffff44;text-decoration-thickness:1px}
+tr.excluded .dot{background:transparent;border:1px solid var(--faint)}
 </style>
 
 <div id="tip"></div>
@@ -221,8 +226,8 @@ function coins(d){
      <th class="sm-hide" data-tip="5-minute median spread in cents; \u21af flags a momentary spike the entry gate sits out">Spread</th></tr>`;
   for(const c of rows){
     const dist=c.dist_bps==null?"—":(c.dist_bps>0?"+":"")+c.dist_bps.toFixed(1);
-    h+=`<tr>
-      <td><span class="dot ${c.running?"on":"off"}"></span>
+    h+=`<tr class="${c.excluded?"excluded":""}" ${c.excluded?'data-tip="excluded from live trading - watched, never traded"':""}>
+      <td><span class="dot ${c.excluded?"":c.running?"on":"off"}"></span>
         <span class="coin">${c.label}</span>
         ${c.excluded?' <span class="warn" style="font-size:10px">excl</span>':""}</td>
       <td class="dim">${c.clock||"—"}</td>
