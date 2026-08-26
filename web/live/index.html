@@ -102,6 +102,14 @@ tr:last-child td{border-bottom:none}
   background:#1c2530;border:1px solid #33404f;border-radius:6px;
   color:var(--ink);font-size:11.5px;line-height:1.45;pointer-events:none;
   box-shadow:0 6px 18px #0009;display:none}
+
+tr.open-row td{background:#1f6feb14;border-bottom-color:#1f6feb3a}
+tr.open-row td:first-child{border-left:2px solid var(--accent)}
+tr.open-row{animation:trk 2.2s ease-in-out infinite}
+@keyframes trk{
+  0%,100%{filter:brightness(1)}
+  50%{filter:brightness(1.45)}
+}
 </style>
 
 <div id="tip"></div>
@@ -277,7 +285,8 @@ function feed(d){
     <th class="sm-hide" data-tip="how deep into the 15-minute window the order was placed (0:00 = window open)">Opened at</th>
     <th data-tip="time remaining to expiry when the order was placed">Left</th>
     <th data-tip="WON settled our way \u00b7 lost settled against us \u00b7 cut we exited early \u00b7 miss never filled \u00b7 open still riding">Result</th>
-    <th data-tip="net profit after fees, from the exchange-settled close">Net</th></tr>`;
+    <th data-tip="net profit after fees, from the exchange-settled close">Net</th>
+    <th data-tip="open positions only: what our side's current bid pays to close now, with unrealized P&L against cost">Value</th></tr>`;
   for(const x of r){
     const hit=+x.filled>0, px=x.cost, o=x.outcome;
     let res='<span class="faint">\u2014</span>', net='';
@@ -287,7 +296,13 @@ function feed(d){
                :`<span class="down">${o.how==="flatten"?"cut":"lost"}</span>`;
       net=`<span class="${o.pnl>0?"up":o.pnl<0?"down":"dim"}">${money(o.pnl)}</span>`;
     } else { res='<span class="warn">open</span>'; }
-    h+=`<tr>
+    let val='';
+    if(x.mtm){
+      val=`<span class="mono">$${x.mtm.value.toFixed(2)}</span> `
+         +`<span class="${x.mtm.unreal>0?"up":x.mtm.unreal<0?"down":"dim"}">(${x.mtm.unreal>=0?"+":""}${x.mtm.unreal.toFixed(2)})</span>`;
+    }
+    const isOpen = hit && !o;
+    h+=`<tr class="${isOpen?"open-row":""}">
       <td class="dim" style="font-family:var(--mono)">${fmtTs(x.ts)}</td>
       <td class="${hit?"up":"down"}" data-tip="${hit?"order filled":"order missed - accepted but nothing crossed"}">${hit?"\u25cf":"\u25cb"}</td>
       <td><span class="coin">${(x.asset||"").toUpperCase()}</span></td>
@@ -299,6 +314,7 @@ function feed(d){
       <td class="dim">${mss(x.remaining_sec||0)}</td>
       <td>${res}</td>
       <td>${net}</td>
+      <td>${val}</td>
     </tr>`;
   }
   $("feed").innerHTML=h;

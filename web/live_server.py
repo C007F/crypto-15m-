@@ -201,7 +201,22 @@ def _attempts_feed(orders) -> list:
             px = Decimal("0")
         cost = px if r.get("side") == "yes" else (Decimal("1") - px)
         o = res.get(r.get("ticker")) if int(r.get("filled") or 0) else None
+        # Mark-to-market for open positions: what our side's bid pays to close
+        # right now, from the streamed book. None once closed or if unreadable.
+        mtm = None
+        if o is None and int(r.get("filled") or 0):
+            try:
+                bk = json.loads((DATA / "books" / f"{r['ticker']}.json").read_text())
+                if time.time() - float(bk["ts"]) < 30:
+                    bid = float(bk["yes_bid"]) if r.get("side") == "yes" else float(bk["no_bid"])
+                    n = int(r.get("filled") or 0)
+                    if 0 < bid < 1:
+                        mtm = {"value": round(bid * n, 2),
+                               "unreal": round((bid - float(cost)) * n, 2)}
+            except (OSError, KeyError, ValueError, json.JSONDecodeError):
+                pass
         out.append({
+            "mtm": mtm,
             "ts": r.get("ts"), "asset": r.get("asset"), "side": r.get("side"),
             "requested": r.get("requested"), "filled": r.get("filled"),
             "cost": float(cost) if 0 < cost < 1 else None,
