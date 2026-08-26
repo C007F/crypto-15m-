@@ -96,13 +96,20 @@ tr:last-child td{border-bottom:none}
   .sm-hide{display:none}
   .feed{font-size:11px}
 }
+
+[data-tip]{cursor:help}
+#tip{position:fixed;z-index:99;max-width:260px;padding:7px 10px;
+  background:#1c2530;border:1px solid #33404f;border-radius:6px;
+  color:var(--ink);font-size:11.5px;line-height:1.45;pointer-events:none;
+  box-shadow:0 6px 18px #0009;display:none}
 </style>
 
+<div id="tip"></div>
 <header>
   <h1>Kalshi 15m</h1>
   <span class="tag">live · real money</span>
-  <span class="clock mono" id="clock" title="time left in the current 15m window">—</span>
-  <span class="now mono" id="nowct" title="current time, US Central">—</span>
+  <span class="clock mono" id="clock" data-tip="time left in the current 15m window">—</span>
+  <span class="now mono" id="nowct" data-tip="current time, US Central">—</span>
   <span class="when" id="when">…</span>
 </header>
 <div id="err"></div>
@@ -141,15 +148,21 @@ const cls=n=>n==null?"":(n>0?"up":n<0?"down":"dim");
 function hero(d){
   const x=d.exchange||{}, e=d.era||{};
   const cells=[
-    ["Balance", money(x.balance), "from Kalshi"],
-    ["Today", money(x.day), (x.settled||0)+" settled · "+(x.winners||0)+" won"],
-    ["All time", money(x.total), "vs $200 deposited"],
-    ["Fill rate", pct(e.rate), e.fills+" of "+e.attempts+" since the pricing fix"],
-    ["Win rate", pct(x.settled?x.winners/x.settled:null), "breakeven ≈ 12.7% at 8x"],
-    ["Open", (x.open==null?"—":x.open), "positions right now"],
+    ["Balance", money(x.balance), "from Kalshi",
+      "account cash straight from Kalshi's balance endpoint, refreshed every minute"],
+    ["Today", money(x.day), (x.settled||0)+" settled · "+(x.winners||0)+" won",
+      "balance now minus balance at the start of the trading day"],
+    ["All time", money(x.total), "vs $200 deposited",
+      "lifetime result: balance minus the one $200 deposit ever made"],
+    ["Fill rate", pct(e.rate), e.fills+" of "+e.attempts+" since the pricing fix",
+      "share of orders that actually crossed, measured since the orderbook pricing fix (before it: 6%)"],
+    ["Win rate", pct(x.settled?x.winners/x.settled:null), "breakeven ≈ 12.7% at 8x",
+      "settled winners over settled trades today. At ~8x average payoff, anything above ~12.7% is profitable"],
+    ["Open", (x.open==null?"—":x.open), "positions right now",
+      "contracts currently held and unsettled, from the exchange"],
   ];
-  $("hero").innerHTML=cells.map(([k,v,s],i)=>
-    `<div><div class="k">${k}</div>
+  $("hero").innerHTML=cells.map(([k,v,s,tip],i)=>
+    `<div data-tip="${tip}"><div class="k">${k}</div>
      <div class="v ${i===1?cls(x.day):i===2?cls(x.total):""}">${v}</div>
      <div class="sub">${s}</div></div>`).join("");
 }
@@ -182,7 +195,7 @@ function coins(d){
         if(!sp||sp.med==null) return '<span class="dim">—</span>';
         const spike=sp.now>Math.max(2*sp.med,sp.med+2);
         return `<span class="${sp.med>=4?"warn":"dim"}">${sp.med.toFixed(1)}¢</span>`
-             + (spike?` <span class="warn" title="momentary: book thinned; gate sits these out">↯${sp.now.toFixed(0)}</span>`:"");
+             + (spike?` <span class="warn" data-tip="momentary: book thinned; gate sits these out">↯${sp.now.toFixed(0)}</span>`:"");
       })()}</td>
     </tr>`;
   }
@@ -198,21 +211,29 @@ function risk(d){
   const cap=s.max_contracts, stage=s.stage;
   const stages=[1,3,8], next=stages[(stage||0)+1];
   $("risk").innerHTML=[
-    ["Contract cap", cap+(next?` <span class="faint">→ ${next} at 10 fills</span>`:"")],
-    ["Stage", `${stage} <span class="faint">(${s.orders_at_stage||0} fills in)</span>`],
-    ["Daily stop", `<span class="${used>0.6?"down":"dim"}">${money(-(x.day||0)>0?-(x.day):0)} of $15</span>`],
-    ["Equity floor", "$50"],
-    ["Halted", s.killed||x.halted?`<span class="down">${x.halted||"killed"}</span>`:'<span class="up">no</span>'],
-  ].map(([k,v])=>`<div class="kv"><span class="dim">${k}</span><span>${v}</span></div>`).join("");
+    ["Contract cap", cap+(next?` <span class="faint">→ ${next} at 10 fills</span>`:""),
+      "most contracts one order may buy right now; the ramp lifts it 1 → 3 → 8 as fills accumulate"],
+    ["Stage", `${stage} <span class="faint">(${s.orders_at_stage||0} fills in)</span>`,
+      "which ramp step we are on, and filled orders counted toward the next step"],
+    ["Daily stop", `<span class="${used>0.6?"down":"dim"}">${money(-(x.day||0)>0?-(x.day):0)} of $15</span>`,
+      "realized loss so far against the hard $15/day cap - hitting it halts all trading until the day rolls"],
+    ["Equity floor", "$50",
+      "if account equity ever drops below $50, everything halts - fails closed if equity is unknown"],
+    ["Halted", s.killed||x.halted?`<span class="down">${x.halted||"killed"}</span>`:'<span class="up">no</span>',
+      "whether any kill condition is active right now"],
+  ].map(([k,v,tip])=>`<div class="kv" data-tip="${tip}"><span class="dim">${k}</span><span>${v}</span></div>`).join("");
 }
 
 function exec(d){
   const e=d.era||{}, l=d.latency||{};
   let h=[
-    ["Fill rate now", pct(e.rate)+` <span class="faint">${e.fills}/${e.attempts}</span>`],
-    ["All time", pct(e.all_rate)+` <span class="faint">${e.all_fills}/${e.all_attempts}</span>`],
-    ["Order latency", (l.median==null?"—":l.median+"ms")+` <span class="faint">p90 ${l.p90||"—"}ms</span>`],
-  ].map(([k,v])=>`<div class="kv"><span class="dim">${k}</span><span>${v}</span></div>`).join("");
+    ["Fill rate now", pct(e.rate)+` <span class="faint">${e.fills}/${e.attempts}</span>`,
+      "orders filled / orders sent since the orderbook pricing fix (2026-08-26 02:39 UTC)"],
+    ["All time", pct(e.all_rate)+` <span class="faint">${e.all_fills}/${e.all_attempts}</span>`,
+      "includes two dead bugs - stale-quote limits that could not cross, and orders sent to the wrong exchange - kept for honesty, not health"],
+    ["Order latency", (l.median==null?"—":l.median+"ms")+` <span class="faint">p90 ${l.p90||"—"}ms</span>`,
+      "round trip from sending an order to Kalshi's reply"],
+  ].map(([k,v,tip])=>`<div class="kv" data-tip="${tip}"><span class="dim">${k}</span><span>${v}</span></div>`).join("");
   const r=e.reasons||[];
   h+=`<div class="note">${r.length
     ? "Unfilled since the fix: "+r.map(([k,n])=>`${k} ×${n}`).join(", ")
@@ -234,16 +255,16 @@ function feed(d){
   const r=d.attempts_feed||[];
   if(!r.length){$("feed").innerHTML='<tr><td class="faint">no attempts yet</td></tr>';return;}
   let h=`<tr>
-    <th title="when the order was sent (Central time)">Time</th>
-    <th title="\u25cf filled  \u00b7  \u25cb accepted but nothing crossed">Fill</th>
-    <th title="which coin's 15-minute market">Asset</th>
-    <th title="every window asks: will price finish ABOVE the strike? yes = over, no = under">Side</th>
-    <th title="contracts filled / contracts requested">Qty</th>
-    <th title="what one contract cost us (a NO at yes-price 0.90 costs 0.10)">Cost</th>
-    <th title="gross payoff multiple if it wins: a 0.10 contract pays $1.00 = 10x">Pays</th>
-    <th class="sm-hide" title="seconds remaining in the 15-min window when we entered">Left</th>
-    <th title="WON settled our way \u00b7 lost settled against us \u00b7 cut we exited early \u00b7 miss never filled \u00b7 open still riding">Result</th>
-    <th title="net profit after fees, from the exchange-settled close">Net</th></tr>`;
+    <th data-tip="when the order was sent (Central time)">Time</th>
+    <th data-tip="\u25cf filled  \u00b7  \u25cb accepted but nothing crossed">Fill</th>
+    <th data-tip="which coin's 15-minute market">Asset</th>
+    <th data-tip="every window asks: will price finish ABOVE the strike? yes = over, no = under">Side</th>
+    <th data-tip="contracts filled / contracts requested">Qty</th>
+    <th data-tip="what one contract cost us (a NO at yes-price 0.90 costs 0.10)">Cost</th>
+    <th data-tip="gross payoff multiple if it wins: a 0.10 contract pays $1.00 = 10x">Pays</th>
+    <th class="sm-hide" data-tip="seconds remaining in the 15-min window when we entered">Left</th>
+    <th data-tip="WON settled our way \u00b7 lost settled against us \u00b7 cut we exited early \u00b7 miss never filled \u00b7 open still riding">Result</th>
+    <th data-tip="net profit after fees, from the exchange-settled close">Net</th></tr>`;
   for(const x of r){
     const hit=+x.filled>0, px=x.cost, o=x.outcome;
     let res='<span class="faint">\u2014</span>', net='';
@@ -255,9 +276,9 @@ function feed(d){
     } else { res='<span class="warn">open</span>'; }
     h+=`<tr>
       <td class="dim" style="font-family:var(--mono)">${fmtTs(x.ts)}</td>
-      <td class="${hit?"up":"down"}" title="${hit?"order filled":"order missed - accepted but nothing crossed"}">${hit?"\u25cf":"\u25cb"}</td>
+      <td class="${hit?"up":"down"}" data-tip="${hit?"order filled":"order missed - accepted but nothing crossed"}">${hit?"\u25cf":"\u25cb"}</td>
       <td><span class="coin">${(x.asset||"").toUpperCase()}</span></td>
-      <td class="dim" title="${x.side==="yes"?"betting price finishes ABOVE the strike (over)":"betting price finishes BELOW the strike (under)"}">${x.side||""}</td>
+      <td class="dim" data-tip="${x.side==="yes"?"betting price finishes ABOVE the strike (over)":"betting price finishes BELOW the strike (under)"}">${x.side||""}</td>
       <td>${hit?x.filled:0}/${x.requested||0}</td>
       <td>${px?px.toFixed(3):"\u2014"}</td>
       <td class="dim">${px?(1/px).toFixed(0)+"x":"\u2014"}</td>
@@ -297,5 +318,17 @@ function paintNow(){
 }
 setInterval(()=>{ if(clockLeft!=null){ clockLeft=clockLeft>0?clockLeft-1:899; paintClock(); } paintNow(); },1000);
 paintNow();
+document.addEventListener("mousemove",e=>{
+  const el=e.target.closest&&e.target.closest("[data-tip]");
+  const t=$("tip");
+  if(!el){t.style.display="none";return;}
+  t.textContent=el.getAttribute("data-tip");
+  t.style.display="block";
+  const pad=14, w=t.offsetWidth, h=t.offsetHeight;
+  let x=e.clientX+pad, y=e.clientY+pad;
+  if(x+w>innerWidth-8) x=e.clientX-w-pad;
+  if(y+h>innerHeight-8) y=e.clientY-h-pad;
+  t.style.left=x+"px"; t.style.top=y+"px";
+});
 tick();setInterval(tick,5000);
 </script>
