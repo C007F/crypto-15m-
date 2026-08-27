@@ -332,7 +332,7 @@ function feed(d){
     <th data-tip="when the order was sent (Central time)">Time</th>
     <th data-tip="\u25cf filled  \u00b7  \u25cb accepted but nothing crossed">Fill</th>
     <th data-tip="which coin's 15-minute market">Asset</th>
-    <th data-tip="every window asks: will price finish ABOVE the strike? yes = over, no = under">Side</th>
+    <th data-tip="the bet: over = price finishes above the strike, under = below. (Kalshi calls these yes/no)">Side</th>
     <th data-tip="contracts filled / contracts requested">Qty</th>
     <th data-tip="what one contract cost us (a NO at yes-price 0.90 costs 0.10)">Cost</th>
     <th data-tip="gross payoff multiple if it wins: a 0.10 contract pays $1.00 = 10x">Pays</th>
@@ -362,7 +362,7 @@ function feed(d){
       <td class="dim" style="font-family:var(--mono)">${fmtTs(x.ts)}</td>
       <td class="${hit?"up":"down"}" data-tip="${hit?"order filled":"order missed - accepted but nothing crossed"}">${hit?"\u25cf":"\u25cb"}</td>
       <td><span class="coin">${(x.asset||"").toUpperCase()}</span></td>
-      <td class="dim" data-tip="${x.side==="yes"?"betting price finishes ABOVE the strike (over)":"betting price finishes BELOW the strike (under)"}">${x.side||""}</td>
+      <td class="dim" data-tip="${x.side==="yes"?"bet the price finishes ABOVE the strike (Kalshi side: yes)":"bet the price finishes BELOW the strike (Kalshi side: no)"}">${x.side==="yes"?"over":x.side==="no"?"under":""}</td>
       <td>${hit?x.filled:0}/${x.requested||0}</td>
       <td>${px?px.toFixed(3):"\u2014"}</td>
       <td class="dim">${px?(1/px).toFixed(0)+"x":"\u2014"}</td>
