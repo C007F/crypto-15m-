@@ -41,7 +41,11 @@ def uctl(*a):
 # ---------------------------------------------------------------- deployment
 def _code_is_deployed():
     """The bug I keep making: commit a fix, never restart the service."""
-    last = sh("git", "-C", str(ROOT), "log", "-1", "--format=%ct")
+    # Only commits that touch code the traders actually run. Dashboard and
+    # research commits do not require a trader restart, and counting them made
+    # this check cry wolf overnight (299min "behind" on web-only changes).
+    last = sh("git", "-C", str(ROOT), "log", "-1", "--format=%ct", "--",
+              "src/", ".env", "systemd/crypto15m-live@.service")
     if not last:
         return False, "cannot read git"
     commit_ts = int(last)

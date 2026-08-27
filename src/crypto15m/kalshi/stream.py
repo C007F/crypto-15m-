@@ -180,8 +180,19 @@ class Streamer:
                             (BOOKS_DIR / f"{t}.json").unlink(missing_ok=True)
                             self.subscribed.discard(t)
                 try:
-                    raw = await asyncio.wait_for(ws.recv(), timeout=5.0)
+                    raw = await asyncio.wait_for(ws.recv(), timeout=2.0)
                 except asyncio.TimeoutError:
+                    # Heartbeat quiet books. A book that has not CHANGED is
+                    # still perfectly current, but a file that has not been
+                    # WRITTEN looks stale to the traders, whose freshness
+                    # window (3s) then sends them to REST every tick - at 3am
+                    # the quiet books (zec, near) had seven traders hammering
+                    # Kalshi for data this process already held, 429ing the
+                    # observer's discovery calls into starvation.
+                    now2 = time.time()
+                    for t, b in list(self.books.items()):
+                        if now2 - b.last_write > 1.5:
+                            self.write_top(t)
                     continue
                 r = json.loads(raw)
                 ty = r.get("type")
