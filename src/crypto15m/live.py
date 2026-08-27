@@ -164,7 +164,11 @@ class LiveGuard:
 
     # ------------------------------------------------------------------ gates
     def roll_day(self, now: datetime, equity: Decimal) -> None:
-        today = now.date().isoformat()
+        # The trading day is Cam's day. Rolling at UTC midnight reset the $15
+        # stop at 7pm Central, quietly handing an evening session a fresh
+        # budget mid-evening.
+        from zoneinfo import ZoneInfo
+        today = now.astimezone(ZoneInfo("America/Chicago")).date().isoformat()
         with self._locked():
             self._load()
             if self.state.day != today:

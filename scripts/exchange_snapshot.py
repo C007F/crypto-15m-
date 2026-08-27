@@ -46,10 +46,23 @@ def main() -> None:
             out["halted"] = st.get("halted") or ""
         except Exception:
             pass
-        today = time.strftime("%Y-%m-%d")
-        rows = [x for x in (c.auth_get("/portfolio/settlements",
-                                       {"limit": 200}).get("settlements") or [])
-                if str(x.get("settled_time", ""))[:10] == today]
+        # "Today" is Cam's day, not the server's. Chester runs UTC, so a
+        # naive date rolled his trading day at 7pm Central and split evening
+        # sessions across two "days".
+        from zoneinfo import ZoneInfo
+        from datetime import datetime
+        CT = ZoneInfo("America/Chicago")
+        today = datetime.now(CT).date().isoformat()
+        rows = []
+        for x in (c.auth_get("/portfolio/settlements",
+                             {"limit": 200}).get("settlements") or []):
+            ts = str(x.get("settled_time", ""))
+            try:
+                d = datetime.fromisoformat(ts.replace("Z", "+00:00")).astimezone(CT).date().isoformat()
+            except ValueError:
+                continue
+            if d == today:
+                rows.append(x)
         out["settled"] = len(rows)
         wins = 0
         for x in rows:
