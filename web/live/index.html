@@ -12,9 +12,12 @@
 @font-face{font-family:'D-DIN';src:url('fonts/D-DIN-Bold.woff') format('woff');
   font-weight:600 800;font-style:normal;font-display:swap}
 :root{
+  /* dark is the default; light redefines ONLY these tokens below */
   --bg:#000000; --panel:#0c0f10; --line:#26292b; --line-soft:#191c1e;
   --ink:#f4f6f6; --dim:#9ba1a6; --faint:#5c6266;
   --up:#2fbf71; --down:#ff5449; --warn:#f2b544;
+  --wash-open:#f2b5440f; --wash-open-line:#f2b54433; --wash-pulse:#f2b54418;
+  --strike:#ffffff44; --tip-shadow:0 8px 28px #000c;
   --din:'D-DIN','Helvetica Neue',Helvetica,Arial,sans-serif;
   --mono:ui-monospace,'SF Mono',Menlo,Consolas,monospace;
 }
@@ -94,21 +97,21 @@ tr:last-child td{border-bottom:none}
   text-transform:uppercase;letter-spacing:.08em}
 
 /* open positions: a breathing white edge, not a glow */
-tr.open-row td{background:#f2b5440f;border-bottom-color:#f2b54433}
+tr.open-row td{background:var(--wash-open);border-bottom-color:var(--wash-open-line)}
 tr.open-row td:first-child{border-left:2px solid var(--warn);padding-left:10px}
 tr.open-row .coin{color:var(--warn)}
 tr.open-row{animation:breathe 2.4s ease-in-out infinite}
 @keyframes breathe{
   0%,100%{box-shadow:inset 0 0 0 9999px #f2b54400}
-  50%{box-shadow:inset 0 0 0 9999px #f2b54418}
+  50%{box-shadow:inset 0 0 0 9999px var(--wash-pulse)}
 }
 @media(prefers-reduced-motion:reduce){tr.open-row{animation:none}}
 
 [data-tip]{cursor:help}
 #tip{position:fixed;z-index:99;max-width:270px;padding:10px 13px;
-  background:#0c0f10;border:1px solid var(--line);
+  background:var(--panel);border:1px solid var(--line);
   color:var(--ink);font-size:11.5px;line-height:1.55;pointer-events:none;
-  letter-spacing:.02em;box-shadow:0 8px 28px #000c;display:none}
+  letter-spacing:.02em;box-shadow:var(--tip-shadow);display:none}
 
 @media(max-width:760px){
   body{padding:0 14px 48px}
@@ -130,8 +133,32 @@ tr.open-row{animation:breathe 2.4s ease-in-out infinite}
 
 tr.excluded td{opacity:.38}
 tr.excluded .coin{color:var(--faint);text-decoration:line-through;
-  text-decoration-color:#ffffff44;text-decoration-thickness:1px}
+  text-decoration-color:var(--strike);text-decoration-thickness:1px}
 tr.excluded .dot{background:transparent;border:1px solid var(--faint)}
+
+/* Light: the white SpaceX press-page look. Applies when the OS prefers light
+   (unless the toggle pinned dark) or when the toggle pins light. */
+@media (prefers-color-scheme: light){
+  :root:not([data-theme=dark]){
+    --bg:#ffffff; --panel:#f6f7f7; --line:#d4d8da; --line-soft:#e8eaeb;
+    --ink:#101314; --dim:#5c6468; --faint:#969ea3;
+    --up:#0e8f4c; --down:#d1281e; --warn:#a86d00;
+    --wash-open:#a86d0012; --wash-open-line:#a86d0038; --wash-pulse:#a86d001c;
+    --strike:#00000038; --tip-shadow:0 8px 28px #0003;
+  }
+}
+:root[data-theme=light]{
+  --bg:#ffffff; --panel:#f6f7f7; --line:#d4d8da; --line-soft:#e8eaeb;
+  --ink:#101314; --dim:#5c6468; --faint:#969ea3;
+  --up:#0e8f4c; --down:#d1281e; --warn:#a86d00;
+  --wash-open:#a86d0012; --wash-open-line:#a86d0038; --wash-pulse:#a86d001c;
+  --strike:#00000038; --tip-shadow:0 8px 28px #0003;
+}
+#themeBtn{margin-left:14px;background:none;border:1px solid var(--line);
+  color:var(--dim);font:inherit;font-size:10px;letter-spacing:.2em;
+  text-transform:uppercase;padding:4px 10px;cursor:pointer}
+#themeBtn:hover{color:var(--ink)}
+#themeBtn:focus-visible{outline:2px solid var(--warn);outline-offset:2px}
 </style>
 
 <div id="tip"></div>
@@ -141,6 +168,7 @@ tr.excluded .dot{background:transparent;border:1px solid var(--faint)}
   <span class="clock mono" id="clock" data-tip="time elapsed in the current 15m window - counts up from 0:00 at open to 15:00 at expiry; amber inside the final 2:30">—</span>
   <span class="now mono" id="nowct" data-tip="current time, US Central">—</span>
   <span class="when" id="when">…</span>
+  <button id="themeBtn" data-tip="switch theme (remembers your choice; blank choice follows the OS)">theme</button>
 </header>
 <div id="err"></div>
 <div class="hero" id="hero"></div>
@@ -419,5 +447,16 @@ document.addEventListener("mousemove",e=>{
   if(y+h>innerHeight-8) y=e.clientY-h-pad;
   t.style.left=x+"px"; t.style.top=y+"px";
 });
+(function(){
+  const saved=localStorage.getItem("boardTheme");
+  if(saved) document.documentElement.setAttribute("data-theme",saved);
+  $("themeBtn").onclick=()=>{
+    const cur=document.documentElement.getAttribute("data-theme")
+      || (matchMedia("(prefers-color-scheme: light)").matches?"light":"dark");
+    const next=cur==="dark"?"light":"dark";
+    document.documentElement.setAttribute("data-theme",next);
+    localStorage.setItem("boardTheme",next);
+  };
+})();
 tick();setInterval(tick,5000);
 </script>
