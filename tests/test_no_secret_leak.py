@@ -25,17 +25,17 @@ class NoSecretLeak(unittest.TestCase):
             self.assertIsNone(m, f"{where} leaked {pat.pattern!r}: {m.group(0) if m else ''}")
 
     def test_api_payload_carries_no_secrets(self):
-        import server
-        self.scan(json.dumps(server.build_board(), default=str), "board payload")
-        for asset in ("btc", "zec"):
-            self.scan(json.dumps(server.build(asset), default=str), f"{asset} payload")
+        # web/server.py (paper) was deleted 2026-08-26; the live board is the
+        # only payload now.
+        import live_server
+        self.scan(json.dumps(live_server.build(), default=str), "live payload")
 
     def test_static_page_carries_no_secrets(self):
         page = (ROOT / "web" / "static" / "index.html").read_text(encoding="utf-8")
         self.scan(page, "index.html")
 
     def test_server_source_never_reads_the_env_or_key(self):
-        src = (ROOT / "web" / "server.py").read_text(encoding="utf-8")
+        src = (ROOT / "web" / "live_server.py").read_text(encoding="utf-8")
         for bad in ("kalshi_private", ".env", "KALSHI_API", "api_secret"):
             self.assertNotIn(bad, src, f"web server references {bad}")
 
@@ -59,8 +59,8 @@ class LiveIsMicroOnly(unittest.TestCase):
         losing = {"momentum", "lotto"}
         self.assertFalse(losing & set(LIVE_BOOKS),
                          "a book with measured negative expectancy is live")
-        self.assertGreater(len(BOOKS), len(LIVE_BOOKS),
-                           "paper should still run every book for comparison")
+        # Paper was removed 2026-08-26: micro is the only book, everywhere.
+        self.assertEqual([b.book_id for b in BOOKS], ["micro"])
 
 
 class LiveDashboardIsClean(unittest.TestCase):
@@ -132,26 +132,19 @@ class LivePnlAccounting(unittest.TestCase):
                         "corrected total should be higher than the raw one")
 
 
-class ShadowHasItsOwnJournal(unittest.TestCase):
-    """Sharing one journal made shadow trades read as live ones.
+class ShadowIsGone(unittest.TestCase):
+    """The shadow book was removed with the rest of paper on 2026-08-26.
 
-    XRP showed 6-0 on a single real fill because thirteen shadow fills were
-    being counted as live. A comparison is worthless if both sides write to
-    the same ledger.
+    It burned API calls inside the live traders and once made XRP read 6-0 on
+    a single real fill. These tests keep it from quietly returning.
     """
 
-    def test_shadow_writes_to_a_separate_journal(self):
+    def test_no_shadow_execution_in_the_bot(self):
         from pathlib import Path
         src = (Path(__file__).resolve().parents[1] / "src/crypto15m/bot.py").read_text()
-        self.assertIn('self.shadow_journal = Journal(shadow_dir / "journal.sqlite3")', src)
-        self.assertIn("journal=self.shadow_journal", src)
-
-    def test_live_step_does_not_pass_the_live_journal_to_the_shadow(self):
-        from pathlib import Path
-        src = (Path(__file__).resolve().parents[1] / "src/crypto15m/bot.py").read_text()
-        call = src.split("self.shadow.step(")[1][:260]
-        self.assertNotIn("journal=self.journal", call)
-
+        self.assertNotIn("self.shadow = ", src.replace("self.shadow = None", ""))
+        self.assertNotIn(".shadow.step(", src)
+        self.assertNotIn("shadow_journal", src)
 
 class ReconstructedHistory(unittest.TestCase):
     """Moving LIVE_SINCE must not erase real trades.
@@ -206,11 +199,14 @@ class DashboardCoverage(unittest.TestCase):
         self.assertFalse(missing, f"coins missing from the board: {missing}")
 
     def test_excluded_coins_are_flagged(self):
+        import sys
+        sys.path.insert(0, str(ROOT / "src"))
+        from crypto15m.bot import NO_LIVE_ASSETS
         for c in self.payload()["coins"]:
-            if c["key"] == "zec":
-                self.assertTrue(c["excluded"], "ZEC must show as excluded")
+            if c["key"] in NO_LIVE_ASSETS:
+                self.assertTrue(c["excluded"], f"{c['key']} must show as excluded")
             else:
-                self.assertFalse(c["excluded"])
+                self.assertFalse(c["excluded"], f"{c['key']} wrongly flagged")
 
     def test_spread_is_surfaced(self):
         """Spread predicted the only coin that lost real money."""
