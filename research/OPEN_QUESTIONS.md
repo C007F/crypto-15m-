@@ -6,9 +6,21 @@ fills confirming it is reachable, not just visible.
 
 ---
 
-## 1. Entry timing — edge is concentrated at the FRONT of the window
+## 1. Entry timing — RESOLVED 2026-08-27: DOES NOT REPLICATE. Do not deploy.
 
-**Status:** measured, NOT deployed. Window deliberately left wide.
+**Verdict:** the +11.1%-at-750s finding was real for Aug 26 and only Aug 26.
+Replication across 8,896 harvested markets (13 days, one row per window,
+Bonferroni x7): buying the cheap leg 0.02-0.50 is significantly NEGATIVE at
+every mark, -1.7% to -2.9%, p<0.001 throughout. Control split: Aug 26 alone
+reproduces +6.9% (z=+2.47) - so the method and data agree with the live
+observation - while all other days run -2.6% (z=-5.01). One-day regime, not
+structure. The early-window book proposal is dead; micro was never touched.
+
+**Meta-lesson:** a Bonferroni-surviving p=0.0001 on one session's clean
+causal data still measured a day-specific quantity. Replication across days
+is the bar, and it took the harvester about a minute to apply it.
+
+**Original finding, kept for the record:**
 
 Measured 2026-08-26 from `research/observations.jsonl` (272 windows, ~8.5h,
 causal log, no look-ahead). Buying the cheap leg inside the 0.02-0.50 band:
