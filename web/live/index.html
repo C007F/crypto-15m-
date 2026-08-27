@@ -160,7 +160,9 @@ tr.excluded .dot{background:transparent;border:1px solid var(--faint)}
 
 <div class="grid two" style="margin-top:18px">
   <div class="card"><h2>Risk</h2><div id="risk"></div></div>
-  <div class="card"><h2>Execution</h2><div id="exec"></div></div>
+  <div class="card"><h2>Execution</h2><div id="exec"></div>
+    <h2 style="margin-top:22px">Daily</h2><div id="daily"></div>
+  </div>
 </div>
 
 <script>
@@ -274,6 +276,18 @@ function risk(d){
   ].map(([k,v,tip])=>`<div class="kv" data-tip="${tip}"><span class="dim">${k}</span><span>${v}</span></div>`).join("");
 }
 
+function daily(d){
+  const rows=(d.exchange||{}).daily||[];
+  $("daily").innerHTML=rows.map(r=>{
+    const era=r.prefix_era;
+    const label=r.day.slice(5).replace("-","/")+(r.spans>1?" +"+(r.spans-1)+"d":"");
+    return `<div class="kv" data-tip="${era
+      ?"bug era: stale-quote pricing and cut-accounting; balance-anchored so the number is real money, unlike the settlement view"
+      :"anchor-to-anchor balance change for this Central day"}" ${era?'style="opacity:.45"':""}>
+      <span class="dim">${label}${era?" \u00b7 bug era":""}</span>
+      <span class="${r.pnl>0?"up":r.pnl<0?"down":"dim"}">${money(r.pnl)}</span></div>`;
+  }).join("")||'<div class="faint">no history yet</div>';
+}
 function exec(d){
   const e=d.era||{}, l=d.latency||{};
   let h=[
@@ -366,7 +380,7 @@ async function tick(){
     const d=await (await fetch("api/status",{cache:"no-store"})).json();
     $("err").innerHTML=(d.exchange&&d.exchange.error)
       ? `<div class="err">Kalshi read failed: ${d.exchange.error}</div>`:"";
-    hero(d);coins(d);risk(d);exec(d);feed(d);
+    hero(d);coins(d);risk(d);exec(d);daily(d);feed(d);
     if(d.window){clockLeft=d.window.left;}
     $("when").textContent=new Date().toLocaleString([],{month:"numeric",day:"numeric",hour:"2-digit",minute:"2-digit",second:"2-digit"});
   }catch(e){

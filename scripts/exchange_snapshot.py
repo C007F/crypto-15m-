@@ -53,9 +53,9 @@ def main() -> None:
         from datetime import datetime
         CT = ZoneInfo("America/Chicago")
         today = datetime.now(CT).date().isoformat()
+        sets = c.auth_get("/portfolio/settlements", {"limit": 200})
         rows = []
-        for x in (c.auth_get("/portfolio/settlements",
-                             {"limit": 200}).get("settlements") or []):
+        for x in (sets.get("settlements") or []):
             ts = str(x.get("settled_time", ""))
             try:
                 d = datetime.fromisoformat(ts.replace("Z", "+00:00")).astimezone(CT).date().isoformat()
@@ -71,6 +71,37 @@ def main() -> None:
             if rev - cost - D(x["fee_cost"]) > 0:
                 wins += 1
         out["winners"] = wins
+        # Day-by-day ledger anchored to BALANCE, not derived accounting.
+        # Settlement-based daily P&L double-counted cut positions (full cost,
+        # zero recovery) and summed to -14 while the account was +36; a
+        # cash-flow rebuild had its own hole. Cam called it: only the balance
+        # is real. First reading of each Central day is snapshotted; a day's
+        # P&L is the anchor-to-anchor difference net of ledgered deposits.
+        hist_p = ROOT / "data" / "balance_history.jsonl"
+        anchors = []
+        if hist_p.exists():
+            anchors = [json.loads(l) for l in hist_p.read_text().splitlines() if l.strip()]
+        today_ct = datetime.now(CT).date().isoformat()
+        if not any(a["day"] == today_ct for a in anchors):
+            anchors.append({"day": today_ct, "balance": float(bal),
+                            "source": "first snapshot of the day"})
+            with hist_p.open("a") as fh:
+                fh.write(json.dumps(anchors[-1]) + "\n")
+        anchors.sort(key=lambda a: a["day"])
+        daily = []
+        for k in range(1, len(anchors)):
+            span_days = (datetime.fromisoformat(anchors[k]["day"]).date()
+                         - datetime.fromisoformat(anchors[k-1]["day"]).date()).days
+            daily.append({
+                "day": anchors[k-1]["day"],
+                "pnl": round(anchors[k]["balance"] - anchors[k-1]["balance"], 2),
+                "spans": span_days,      # >1 = anchors missing between, combined figure
+                "prefix_era": anchors[k-1]["day"] < "2026-08-26"})
+        # today so far = live balance vs today's anchor
+        ta = next(a for a in reversed(anchors) if a["day"] == today_ct)
+        daily.append({"day": today_ct, "pnl": round(float(bal) - ta["balance"], 2),
+                      "spans": 0, "prefix_era": False})
+        out["daily"] = list(reversed(daily))
         # Per-asset P&L from settlements. The journal undercounts (cuts and
         # partial closes do not land in it cleanly), so the board's per-asset
         # numbers come from here, same source as the headline.
