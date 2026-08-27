@@ -88,7 +88,11 @@ def main():
                 seen = pending.setdefault(q.ticker, {"asset": key, "marks": {}})
                 if str(mark) in seen["marks"]:
                     continue
-                top = c.orderbook_top(q.ticker)
+                # The streamer already holds this book on disk, pushed in
+                # real time and costing zero requests. REST only as fallback -
+                # the observer was starving on 429s reading books the stream
+                # had for free, and stale checkpoints are worse than none.
+                top = c._streamed_top(q.ticker) or c.orderbook_top(q.ticker)
                 if not top:
                     continue
                 ya, ysz = top["yes_ask"], top["yes_ask_size"]
