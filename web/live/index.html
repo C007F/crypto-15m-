@@ -209,7 +209,7 @@ function coins(d){
   const spr=d.spreads||{};
   const rows=(d.coins||[]).slice().map(c=>{
     const e=per[c.key];
-    return {...c, asset_pnl: e?e.pnl:null,
+    return {...c, asset_pnl: e?e.pnl:null, asset_today: e?e.today:null,
             s_w: e?e.w:null, s_n: e?e.n:null};
   }).sort((a,b)=>(b.asset_pnl??-1e9)-(a.asset_pnl??-1e9));
   let h=`<tr>
@@ -221,7 +221,8 @@ function coins(d){
      <th class="sm-hide" data-tip="how far spot is from the strike, in basis points. Positive = above the strike, so YES (over) is currently winning">Dist</th>
      <th data-tip="current price of the YES side from the live orderbook">Ask</th>
      <th class="sm-hide" data-tip="our model's probability that YES wins. Edge = this vs the ask">P(yes)</th>
-     <th data-tip="net settled profit for this asset, from Kalshi's records - not our journal">P/L</th>
+     <th data-tip="net settled profit for this asset since the pricing fix (2026-08-26), from Kalshi's records">P/L</th>
+     <th data-tip="this asset's settled P&L today (Central day)">Today</th>
      <th data-tip="orders filled on this asset since going live">Fills</th>
      <th data-tip="settled wins / settled trades, from the exchange">W/L</th>
      <th class="sm-hide" data-tip="5-minute median spread in cents; \u21af flags a momentary spike the entry gate sits out">Spread</th></tr>`;
@@ -241,6 +242,7 @@ function coins(d){
       <td>${c.yes_ask==null?"—":c.yes_ask.toFixed(2)}</td>
       <td class="dim sm-hide">${c.p_yes==null?"—":c.p_yes.toFixed(2)}</td>
       <td class="${cls(c.asset_pnl)}">${c.asset_pnl==null?"—":money(c.asset_pnl)}</td>
+      <td class="${cls(c.asset_today)}">${c.asset_today==null?"—":money(c.asset_today)}</td>
       <td>${c.fills||0}</td>
       <td><span class="up">${c.s_w??c.wins??0}</span><span class="faint">/</span><span class="dim">${c.s_n??c.closed??0}</span></td>
       <td class="sm-hide">${(()=>{const sp=spr[c.key];

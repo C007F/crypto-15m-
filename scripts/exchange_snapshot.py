@@ -109,19 +109,29 @@ def main() -> None:
         # Per-asset P&L from settlements. The journal undercounts (cuts and
         # partial closes do not land in it cleanly), so the board's per-asset
         # numbers come from here, same source as the headline.
+        # Total is since the pricing fix (2026-08-26), not account inception:
+        # bug-era settlement rows carry the cut-accounting distortion (full
+        # cost, zero recovery) that made the daily ledger lie this morning.
+        # Post-fix every exit has settled, so settlement P&L is real cash.
+        FIX_TS = "2026-08-26T07:39:00Z"   # 02:39 ET in settlement clock terms
         per = {}
-        for x in rows:
+        today_set = {id(x) for x in rows}
+        for x in (sets.get("settlements") or []):
+            if str(x.get("settled_time", "")) < FIX_TS:
+                continue
             t = x.get("ticker") or ""
             key = t[2:t.find("15M")].lower() if "15M" in t else "?"
             cost = D(x["yes_total_cost_dollars"]) + D(x["no_total_cost_dollars"])
             rev = D(str(x["revenue"])) / 100 if x["revenue"] else D("0")
             pnl = rev - cost - D(x["fee_cost"])
-            e = per.setdefault(key, {"pnl": 0.0, "n": 0, "w": 0})
+            e = per.setdefault(key, {"pnl": 0.0, "n": 0, "w": 0, "today": 0.0})
             e["pnl"] += float(pnl); e["n"] += 1
             if pnl > 0:
                 e["w"] += 1
+            if id(x) in today_set:
+                e["today"] += float(pnl)
         for e in per.values():
-            e["pnl"] = round(e["pnl"], 4)
+            e["pnl"] = round(e["pnl"], 4); e["today"] = round(e["today"], 4)
         out["per_asset"] = per
         out["open"] = len(c.auth_get("/portfolio/positions")
                           .get("market_positions") or [])
