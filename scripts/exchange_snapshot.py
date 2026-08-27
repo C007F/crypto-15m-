@@ -40,9 +40,9 @@ def main() -> None:
         out["deposited"] = float(dep)
         out["withdrawn"] = float(wd)
         out["total_pct"] = float(profit / dep * 100) if dep else None
+        # halted flag still comes from the guard; the DAY number does not.
         try:
             st = json.loads((ROOT / "data" / "live_state.json").read_text())
-            out["day"] = float(bal - D(st.get("start_equity") or bal))
             out["halted"] = st.get("halted") or ""
         except Exception:
             pass
@@ -102,6 +102,10 @@ def main() -> None:
         daily.append({"day": today_ct, "pnl": round(float(bal) - ta["balance"], 2),
                       "spans": 0, "prefix_era": False})
         out["daily"] = list(reversed(daily))
+        # THE definition of today's P&L. One source: balance vs today's anchor.
+        # The guard's start_equity gave a second, subtly different "today";
+        # two clocks was how the 7pm-reset bug hid.
+        out["day"] = daily[-1]["pnl"] if daily else None
         # Per-asset P&L from settlements. The journal undercounts (cuts and
         # partial closes do not land in it cleanly), so the board's per-asset
         # numbers come from here, same source as the headline.

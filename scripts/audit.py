@@ -57,11 +57,13 @@ def _code_is_deployed():
                        "-p", "ActiveEnterTimestamp", "--value")
         if not started:
             stale.append(f"{a}:down"); continue
-        try:
-            t = datetime.strptime(started[:-4].strip(), "%a %Y-%m-%d %H:%M:%S")
-            t = t.replace(tzinfo=timezone.utc).timestamp()
-        except Exception:
+        # systemd prints local time with a zone suffix ("... CDT"); let date(1)
+        # parse it. Hand-parsing as UTC broke the moment the box moved to
+        # Central and flagged every trader 290min "behind".
+        epoch = sh("date", "-d", started, "+%s")
+        if not epoch:
             continue
+        t = int(epoch)
         if t < commit_ts:
             stale.append(f"{a}:{int((commit_ts - t) / 60)}min behind")
     if stale:
@@ -196,6 +198,26 @@ def _daily_cap_live():
     return True, f"day {day:+.2f}, ${room:.2f} of the $15 stop remaining"
 
 
+def _ledger_reconciles():
+    """The accounting invariant: ledgered days + deposits == Kalshi balance.
+
+    Cam's rule after the settlement-ledger fiasco: Kalshi is the bookkeeper;
+    anything shown as money must reconcile to the balance exactly. The daily
+    ledger is anchor-to-anchor so this holds by construction - this check
+    exists to scream if anyone ever reintroduces derived accounting."""
+    ex = json.loads((ROOT / "data" / "exchange.json").read_text())
+    cap = json.loads((ROOT / "data" / "capital.json").read_text())
+    dep = sum(e["amount"] for e in cap["events"] if e["kind"] == "deposit")
+    wd = sum(e["amount"] for e in cap["events"] if e["kind"] == "withdraw")
+    hist = [json.loads(l) for l in
+            (ROOT / "data" / "balance_history.jsonl").read_text().splitlines() if l.strip()]
+    ledger = sum(d["pnl"] for d in ex.get("daily") or [])
+    expect = hist[0]["balance"] + ledger - wd  # first anchor is the deposit
+    gap = abs(expect - ex["balance"])
+    return (gap < 0.005,
+            f"anchors+ledger => ${expect:.2f} vs balance ${ex['balance']:.2f} (gap {gap:.4f})")
+
+
 def _reconciles():
     """Our state file vs the exchange."""
     ex = json.loads((ROOT / "data" / "exchange.json").read_text())
@@ -206,8 +228,10 @@ def _reconciles():
     ours = float(st.get("realized_today") or 0)
     theirs = float(ex.get("day") or 0)
     gap = abs(ours - theirs)
-    return (gap < 1.0, f"journal {ours:+.2f} vs exchange {theirs:+.2f} "
-                       f"(gap {gap:.2f}; journal is known to undercount)")
+    # informational: the journal is a trade log, not a ledger. It undercounts
+    # by design (cuts, partials). Warn, never fail.
+    return (True if gap < 1.0 else None,
+            f"journal {ours:+.2f} vs exchange {theirs:+.2f} (gap {gap:.2f})")
 
 
 def _fill_rate():
@@ -284,7 +308,7 @@ for name, fn in [
     ("private key permissions", _key_perms),
     ("kill switch + equity floor", _kill_switch_works),
     ("daily cap headroom", _daily_cap_live),
-    ("journal reconciles to exchange", _reconciles),
+    ("accounting reconciles to Kalshi", _ledger_reconciles),
     ("fill rate healthy", _fill_rate),
     ("observer actually producing", _observer_fresh),
     ("research data growing", _data_growing),
