@@ -112,7 +112,8 @@ tr:last-child td{border-bottom:none}
 
 /* open positions: a breathing white edge, not a glow */
 tr.open-row td{background:var(--wash-open);border-bottom-color:var(--wash-open-line)}
-tr.open-row td:first-child{border-left:2px solid var(--warn);padding-left:10px}
+#feed td:first-child{border-left:2px solid transparent;padding-left:10px}
+tr.open-row td:first-child{border-left-color:var(--warn)}
 tr.open-row .coin{color:var(--warn)}
 tr.open-row{animation:breathe 2.4s ease-in-out infinite}
 @keyframes breathe{
@@ -262,7 +263,9 @@ function coins(d){
     const e=per[c.key];
     return {...c, asset_pnl: e?e.pnl:null, asset_today: e?e.today:null,
             s_w: e?e.w:null, s_n: e?e.n:null};
-  }).sort((a,b)=>(b.asset_pnl??-1e9)-(a.asset_pnl??-1e9));
+  }).sort((a,b)=>(a.excluded-b.excluded)||a.key.localeCompare(b.key));
+  // fixed order: alphabetical, benched coins last. Sorting by P/L made rows
+  // swap places whenever totals crossed - a leaderboard, not an instrument.
   let h=`<tr>
      <th style="width:9%" data-tip="which coin. Green dot = its trader process is running; 'excl' = excluded from live trading">Asset</th>
      <th style="width:7%" data-tip="time left in this coin's current 15-minute window">Window</th>
