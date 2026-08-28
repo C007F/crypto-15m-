@@ -53,7 +53,14 @@ header .when{margin-left:auto;font-size:11px;color:var(--faint);
   border-bottom:1px solid var(--line);margin:0 auto 30px}
 .chart{position:relative;border-right:1px solid var(--line-soft);
   padding:12px 18px 10px 0;min-height:150px}
-.chart canvas{width:100%;height:100%;display:block}
+.chart canvas{width:100%;height:calc(100% - 24px);display:block}
+.ranges{display:flex;gap:2px;margin-bottom:4px}
+.ranges button{background:none;border:none;color:var(--faint);font:inherit;
+  font-size:9.5px;letter-spacing:.18em;text-transform:uppercase;
+  padding:3px 9px;cursor:pointer}
+.ranges button:hover{color:var(--ink)}
+.ranges button.on{color:var(--ink);border-bottom:1px solid var(--warn)}
+.ranges button:focus-visible{outline:1px solid var(--warn)}
 .hero{display:grid;grid-template-columns:repeat(3,1fr)}
 .hero div{padding:12px 16px 10px;min-width:0;
   border-left:1px solid var(--line-soft)}
@@ -180,6 +187,7 @@ tr.excluded .dot{background:transparent;border:1px solid var(--faint)}
 <div id="err"></div>
 <div class="herowrap">
   <div class="chart" data-tip="account balance over time, straight from Kalshi - the one number that cannot lie">
+    <div class="ranges" id="ranges"></div>
     <canvas id="bal"></canvas>
   </div>
   <div class="hero" id="hero"></div>
@@ -432,13 +440,33 @@ async function tick(){
 }
 function tok(name){return getComputedStyle(document.documentElement).getPropertyValue(name).trim();}
 let balSeries=[];
+const RANGES=[["1D",86400],["1W",604800],["1M",2592000],["1Y",31536000],["ALL",null]];
+let balRange=localStorage.getItem("balRange")||"ALL";
+function paintRanges(){
+  $("ranges").innerHTML=RANGES.map(([k])=>
+    `<button class="${k===balRange?"on":""}" data-r="${k}">${k}</button>`).join("");
+  for(const b of $("ranges").querySelectorAll("button"))
+    b.onclick=()=>{balRange=b.dataset.r;localStorage.setItem("balRange",balRange);paintRanges();drawBal();};
+}
+function rangedSeries(){
+  const span=RANGES.find(r=>r[0]===balRange)[1];
+  if(!span) return balSeries;
+  const cut=Date.now()/1000-span;
+  const inR=balSeries.filter(p=>p[0]>=cut);
+  // carry the last point from before the window in, so the line starts at the
+  // left edge with the balance you actually had, brokerage-style
+  const before=balSeries.filter(p=>p[0]<cut);
+  if(before.length) inR.unshift([cut,before[before.length-1][1]]);
+  return inR.length>1?inR:balSeries.slice(-2);
+}
 function drawBal(){
   const cv=$("bal"), box=cv.parentElement;
   if(!balSeries.length||!box.clientWidth) return;
   const dpr=devicePixelRatio||1, W=box.clientWidth-0, H=Math.max(box.clientHeight-22,90);
   cv.width=W*dpr; cv.height=H*dpr; cv.style.height=H+"px";
   const g=cv.getContext("2d"); g.scale(dpr,dpr); g.clearRect(0,0,W,H);
-  const xs=balSeries.map(p=>p[0]), ys=balSeries.map(p=>p[1]);
+  const ser=rangedSeries();
+  const xs=ser.map(p=>p[0]), ys=ser.map(p=>p[1]);
   const x0=Math.min(...xs), x1=Math.max(...xs);
   let y0=Math.min(...ys), y1=Math.max(...ys);
   const pad=(y1-y0)*0.12||1; y0-=pad; y1+=pad;
@@ -464,10 +492,14 @@ function drawBal(){
   g.beginPath(); g.arc(ex,ey,3,0,7); g.fillStyle=line; g.fill();
   g.fillStyle=tok("--ink"); g.font="600 12px "+tok("--mono");
   g.fillText("$"+ys[ys.length-1].toFixed(2),Math.min(ex+8,W-60),ey+4);
+  const d0=ys[ys.length-1]-ys[0], dp=ys[0]?d0/ys[0]*100:0;
+  g.fillStyle=line; g.font="600 10px "+tok("--mono");
+  g.fillText(`${d0>=0?"+":""}${d0.toFixed(2)} (${dp>=0?"+":""}${dp.toFixed(1)}%) ${balRange}`,2,26);
   // min/max ticks
   g.fillStyle=dim; g.font="9px "+tok("--mono");
   g.fillText("$"+y1.toFixed(0),2,12); g.fillText("$"+y0.toFixed(0),2,H-10);
 }
+paintRanges();
 addEventListener("resize",drawBal);
 new MutationObserver(drawBal).observe(document.documentElement,{attributes:true,attributeFilter:["data-theme"]});
 let clockLeft=null;
