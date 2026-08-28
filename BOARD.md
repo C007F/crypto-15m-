@@ -1,7 +1,7 @@
-# The Committee
+# The Board
 
-Investment-committee review for every material change to the trading system.
-**Chair: Cam.** Nothing deploys until the chair says **final**.
+Board review for every material change to the trading system.
+**Chairman of the Board: Cam.** Nothing deploys until the chairman says **final**.
 
 Members give independent takes; disagreement is preserved, not averaged.
 - **Musk seat** — first principles, speed, asymmetric upside; hates process for its own sake
@@ -9,13 +9,13 @@ Members give independent takes; disagreement is preserved, not averaged.
 - **Claude seat** — the measured data; hates claims that outrun evidence
 
 A proposal memo has: the change, each seat's take, the vote, and
-`CHAIR: pending` until Cam rules. Rulings: **final** (deploy), **reject**, or
+`CHAIRMAN: pending` until the chairman rules. Rulings: **final** (deploy), **reject**, or
 amendments. Deployed memos record the outcome for the post-mortem.
 
 ---
 
 ## Memo 001 — Stage B: 4x faster reaction loop
-*Proposed 8/27. Scheduled 8/28 08:47 CT pending chair.*
+*Proposed 8/27. Scheduled 8/28 08:47 CT pending the chairman.*
 
 **Change:** traders read spot from the streamer's files (REST fallback),
 cache static window metadata, POLL_SEC 2.0 → 0.5. Reaction 2000ms → 500ms.
@@ -42,7 +42,7 @@ to REST, restart it).
 
 **Vote: 3-0 FOR** with Buffett/Claude condition: fallback drill before flip.
 
-**CHAIR: pending**
+**CHAIRMAN: pending**
 
 ---
 
@@ -75,4 +75,4 @@ stay 8. Revisit at the 200-trade gate.
 
 **Vote: 1 FOR as written, 1 AGAINST, 1 for the ETH-only amendment.**
 
-**CHAIR: pending**
+**CHAIRMAN: pending**
