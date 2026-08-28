@@ -444,11 +444,12 @@ let balSeries=[];
 const RANGES=[["1D",86400],["1W",604800],["1M",2592000],["1Y",31536000],["ALL",null]];
 let balRange=localStorage.getItem("balRange")||"ALL";
 let scrubX=null;
+let selA=null, selB=null, selDragging=false;   // click-drag measure, Google-style
 function paintRanges(){
   $("ranges").innerHTML=RANGES.map(([k])=>
     `<button class="${k===balRange?"on":""}" data-r="${k}">${k}</button>`).join("");
   for(const b of $("ranges").querySelectorAll("button"))
-    b.onclick=()=>{balRange=b.dataset.r;localStorage.setItem("balRange",balRange);paintRanges();drawBal();};
+    b.onclick=()=>{balRange=b.dataset.r;localStorage.setItem("balRange",balRange);selA=selB=null;paintRanges();drawBal();};
 }
 function rangedSeries(){
   const span=RANGES.find(r=>r[0]===balRange)[1];
@@ -491,8 +492,33 @@ function drawBal(){
   g.shadowColor=line; g.shadowBlur=6;
   g.strokeStyle=line; g.lineWidth=1.8; g.lineJoin="round"; g.stroke();
   g.shadowBlur=0;
+  // click-drag measurement, Google Finance style
+  const nearest=px=>{let idx=0,bd=1e18;
+    for(let i=0;i<xs.length;i++){const dx=Math.abs(X(xs[i])-px);if(dx<bd){bd=dx;idx=i;}}
+    return idx;};
+  if(selA!=null&&selB!=null&&Math.abs(selB-selA)>4){
+    let ia=nearest(selA), ib=nearest(selB);
+    if(ia>ib) [ia,ib]=[ib,ia];
+    const ax=X(xs[ia]), bx=X(xs[ib]);
+    const d=ys[ib]-ys[ia], dp=ys[ia]?d/ys[ia]*100:0;
+    const selCol=tok(d>=0?"--up":"--down");
+    g.globalAlpha=0.13; g.fillStyle=selCol;
+    g.fillRect(ax,4,bx-ax,H-28); g.globalAlpha=1;
+    g.strokeStyle=selCol; g.lineWidth=1;
+    for(const x of [ax,bx]){g.beginPath();g.moveTo(x,4);g.lineTo(x,H-24);g.stroke();}
+    for(const [x,i] of [[ax,ia],[bx,ib]]){
+      g.beginPath();g.arc(x,Y(ys[i]),3,0,7);g.fillStyle=selCol;g.fill();}
+    const spanS=xs[ib]-xs[ia];
+    const dur=spanS<5400?Math.round(spanS/60)+"m":spanS<172800?(spanS/3600).toFixed(1)+"h":(spanS/86400).toFixed(1)+"d";
+    const lbl=`${d>=0?"+":""}$${Math.abs(d).toFixed(2)} (${dp>=0?"+":""}${dp.toFixed(1)}%) over ${dur}`;
+    g.font="600 12px "+tok("--mono");
+    const tw=g.measureText(lbl).width, lx=Math.min(Math.max((ax+bx)/2-tw/2,4),W-tw-6);
+    g.fillStyle=tok("--panel"); g.fillRect(lx-5,4,tw+10,18);
+    g.strokeStyle=selCol; g.strokeRect(lx-5,4,tw+10,18);
+    g.fillStyle=tok("--ink"); g.fillText(lbl,lx,17);
+  }
   // scrubber: hover anywhere, read the balance at that moment
-  if(scrubX!=null){
+  if(scrubX!=null&&!(selA!=null&&selB!=null&&Math.abs(selB-selA)>4)){
     let idx=0,bd=1e18;
     for(let i=0;i<xs.length;i++){const dx=Math.abs(X(xs[i])-scrubX);if(dx<bd){bd=dx;idx=i;}}
     const sx=X(xs[idx]), sy=Y(ys[idx]);
@@ -539,13 +565,23 @@ function drawBal(){
 paintRanges();
 (function(){
   const cv=$("bal");
-  const move=e=>{const r=cv.getBoundingClientRect();
-    const cx=(e.touches?e.touches[0].clientX:e.clientX)-r.left;
-    scrubX=cx; drawBal();};
+  const cx=e=>{const r=cv.getBoundingClientRect();
+    return (e.touches?e.touches[0].clientX:e.clientX)-r.left;};
+  const down=e=>{selDragging=true; selA=cx(e); selB=null; drawBal();};
+  const move=e=>{const x=cx(e);
+    if(selDragging){selB=x;} else {scrubX=x;}
+    drawBal();};
+  const up=e=>{
+    if(selDragging&&(selB==null||Math.abs(selB-selA)<=4)){selA=selB=null;} // a click clears
+    selDragging=false; drawBal();};
+  cv.addEventListener("mousedown",down);
   cv.addEventListener("mousemove",move);
+  cv.addEventListener("mouseup",up);
+  cv.addEventListener("mouseleave",()=>{scrubX=null;selDragging=false;drawBal();});
+  cv.addEventListener("touchstart",down,{passive:true});
   cv.addEventListener("touchmove",move,{passive:true});
-  cv.addEventListener("mouseleave",()=>{scrubX=null;drawBal();});
-  cv.addEventListener("touchend",()=>{scrubX=null;drawBal();});
+  cv.addEventListener("touchend",up);
+  cv.style.cursor="crosshair";
 })();
 addEventListener("resize",drawBal);
 new MutationObserver(drawBal).observe(document.documentElement,{attributes:true,attributeFilter:["data-theme"]});
