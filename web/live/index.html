@@ -147,7 +147,6 @@ tr.open-row{animation:breathe 2.4s ease-in-out infinite}
   table{font-size:13px}
   th,td{padding-left:8px}
   .pos{font-size:11.5px;padding:6px 9px;gap:6px}
-  .sm-hide{display:none}
 }
 
 tr.excluded td{opacity:.38}
@@ -272,6 +271,7 @@ function fmtPx(v){
 function positions(d){
   const open=(d.attempts_feed||[]).filter(x=>+x.filled>0&&!x.outcome);
   const left=d.window?d.window.label:null;
+  const coinByKey={}; for(const c of d.coins||[]) coinByKey[c.key]=c;
   $("positions").innerHTML=open.length?open.map(x=>{
     const m=x.mtm||{};
     return `<div class="pos" data-tip="open position: entered at ${x.cost!=null?x.cost.toFixed(3):"?"} per contract; Now = what closing at the current bid pays; the last figure is net profit if it settles your way">
@@ -280,6 +280,11 @@ function positions(d){
       <span>${x.filled}×${x.cost!=null?x.cost.toFixed(2):"?"}</span>
       ${m.value!=null?`<span>now $${m.value.toFixed(2)} <span class="${m.unreal>0?"up":m.unreal<0?"down":"dim"}">(${m.unreal>=0?"+":""}${m.unreal.toFixed(2)})</span></span>`:""}
       ${m.max_win!=null?`<span class="up">→ +$${m.max_win.toFixed(2)}</span>`:""}
+      ${(()=>{const c=coinByKey[x.asset];
+        if(!c||c.dist_bps==null) return "";
+        const over=c.dist_bps>=0;
+        const winning=(x.side==="yes")===over;
+        return `<span class="${winning?"up":"down"}" data-tip="spot is currently ${over?"ABOVE":"BELOW"} the strike by ${Math.abs(c.dist_bps).toFixed(1)} bps - this position is ${winning?"winning":"losing"} if it settled right now">${over?"\u25b2 above":"\u25bc below"} ${winning?"\u2713":"\u2717"}</span>`;})()}
       ${left?`<span class="faint">${left} left</span>`:""}
     </div>`;
   }).join(""):`<span class="flat">flat — no open positions</span>`;
