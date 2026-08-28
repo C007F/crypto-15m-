@@ -226,8 +226,27 @@ class Mind:
                     eq = Decimal(str(bal["balance_dollars"]))
                 elif bal.get("balance") is not None:
                     eq = Decimal(str(bal["balance"])) / Decimal("100")
-            except Exception:
-                log.warning("balance fetch failed", exc_info=True)
+            except Exception as exc:
+                # Memo 006 follow-up. Do NOT fall through with eq=None.
+                # blocked(None) returns "equity unknown - refusing to trade
+                # blind", and that halt path calls portfolio.flatten_all() -
+                # the PAPER portfolio's bookkeeping flatten, which deletes the
+                # local position and books P&L at the bid WITHOUT ever sending
+                # a close order to Kalshi (it never routes through
+                # _live_close). The book would believe it is flat while the
+                # real contracts stay open until settlement, desyncing the
+                # daily-loss cap and trade counters from reality.
+                #
+                # Until Memo 006's fix, log.warning here raised NameError
+                # ('log' was undefined) which aborted the tick and hid this.
+                # 60 such aborts are in the logs. Removing the crash unmasked
+                # a real-money liquidation path, so skip the tick explicitly -
+                # which is exactly what the crash did, minus the crash.
+                # One line, not exc_info: this runs every tick during a storm.
+                log.warning("balance fetch failed (%s); skipping tick",
+                            type(exc).__name__)
+                self._write_status(None, [], None, now, "balance unavailable")
+                return "balance unavailable; tick skipped"
             if eq is not None:
                 self.guard.roll_day(now, eq)
             why = self.guard.blocked(eq, asset=self.settings.asset.key)
