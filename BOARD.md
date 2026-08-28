@@ -78,4 +78,9 @@ stay 8. Revisit at the 200-trade gate.
 
 **Vote: 1 FOR as written, 1 AGAINST, 1 for the ETH-only amendment.**
 
-**CHAIRMAN: pending**
+**CHAIRMAN: REMANDED 8/27 — resubmit at the 200-trade gate.** The chairman
+sides with the Buffett seat's sequencing: size follows proof. The board will
+re-take up per-asset caps when the post-fix sample reaches 200 settled
+trades, with fresh numbers on (1) per-asset edge - especially whether BTC has
+earned anything, (2) depth and fill rate at current size, (3) Stage B's
+effect on both. No size changes before then.
