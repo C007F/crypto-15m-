@@ -42,7 +42,10 @@ to REST, restart it).
 
 **Vote: 3-0 FOR** with Buffett/Claude condition: fallback drill before flip.
 
-**CHAIRMAN: pending**
+**CHAIRMAN: FINAL — executed 8/27 20:0x CT.** Drill passed (streamer killed:
+stream read returned None, REST delivered, full frame built; restored clean).
+POLL_SEC 2.0 -> 0.5 deployed. Scoreboard: fills/day and price improvement
+vs the 8/26-27 baseline, reviewed at the 8/28 morning checkpoint.
 
 ---
 

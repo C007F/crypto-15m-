@@ -18,7 +18,7 @@ from crypto15m.meta.gate import gate
 from crypto15m.perception.candles import CandleStore
 from crypto15m.perception.history import EmpiricalMoves
 from crypto15m.perception.features import FeatureFrame, build_frame
-from crypto15m.perception.spot_feed import fetch_spot_quote
+from crypto15m.perception.spot_feed import fetch_spot_quote, spot_from_stream
 from crypto15m.ladder import LadderObserver
 from crypto15m.costs.fees import taker_fee
 from crypto15m.live import FillLog, LiveGuard
@@ -119,7 +119,12 @@ class Mind:
         self._book_read_at = _t.monotonic()
         if market is None:
             return None
-        quote = fetch_spot_quote(self.settings.asset.spot_product, self.client.session)
+        # Stage B (Board Memo 001): streamed spot first - fresh to ~150ms and
+        # free - REST only when the file is stale, so a dead streamer degrades
+        # the loop rather than blinding it.
+        quote = spot_from_stream(self.settings.asset.spot_product)
+        if quote is None:
+            quote = fetch_spot_quote(self.settings.asset.spot_product, self.client.session)
         self._refresh_candles()
         frame = build_frame(
             asof=now,

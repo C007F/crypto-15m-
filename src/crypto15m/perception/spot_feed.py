@@ -1,13 +1,38 @@
 from __future__ import annotations
 
+import json
+import time
 import math
 from decimal import Decimal
+
+from pathlib import Path
 
 import requests
 
 from crypto15m.domain import SpotQuote
 
 COINBASE = "https://api.exchange.coinbase.com/products/{product}"
+
+# Written continuously by crypto15m-spot (perception/spot_stream.py).
+STREAM_DIR = Path(__file__).resolve().parents[3] / "data" / "spot"
+STREAM_FRESH_SEC = 5.0
+
+
+def spot_from_stream(product: str) -> SpotQuote | None:
+    """Spot from the streamer's file: microseconds, zero requests.
+
+    None when the file is missing or stale, so the caller falls back to REST.
+    Board Memo 001: the fallback is load-bearing and drilled, not assumed.
+    """
+    try:
+        d = json.loads((STREAM_DIR / f"{product}.json").read_text())
+        if time.time() - float(d["ts"]) > STREAM_FRESH_SEC:
+            return None
+        return SpotQuote(bid=Decimal(str(d["bid"])), ask=Decimal(str(d["ask"])),
+                         last=Decimal(str(d["price"])),
+                         source=f"stream-{product.lower()}")
+    except (OSError, KeyError, ValueError, json.JSONDecodeError):
+        return None
 
 
 def fetch_spot_quote(product: str = "BTC-USD",

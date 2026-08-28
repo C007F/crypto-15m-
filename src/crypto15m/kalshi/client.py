@@ -161,14 +161,25 @@ class KalshiClient:
         poll it directly and only re-list when it expires.
         """
         cached = getattr(self, "_open_ticker", None)
+        base = getattr(self, "_open_market_base", None)
+        if cached and base is not None and base.close_time > datetime.now(timezone.utc):
+            # Stage B: strike/close_time are immutable for the life of a
+            # window; only prices move, and those come from the stream. While
+            # the streamed book is fresh this tick costs zero REST calls.
+            top = self._streamed_top(cached)
+            if top is not None:
+                self.book_stale = False
+                return replace(base, **top)
         if cached:
             try:
                 m = self.get_market(cached)
                 if m.status in {"open", "active"} and m.close_time > datetime.now(timezone.utc):
+                    self._open_market_base = m
                     return m
             except Exception:
                 pass
             self._open_ticker = None
+            self._open_market_base = None
 
         data = self.public_get("/markets", params={"series_ticker": self.settings.asset.series,
                                                    "status": "open", "limit": 20})
@@ -178,7 +189,9 @@ class KalshiClient:
             return None
         live.sort(key=lambda m: m.close_time)
         self._open_ticker = live[0].ticker
-        return self.with_book(live[0])
+        out = self.with_book(live[0])
+        self._open_market_base = out
+        return out
 
     _ob_cache: dict = {}
 
