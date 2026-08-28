@@ -79,7 +79,9 @@ header .when{margin-left:auto;font-size:11px;color:var(--faint);
 .card{background:transparent;border:none;border-top:1px solid var(--line);
   padding:20px 0 0}
 
-table{width:100%;border-collapse:collapse;font-size:13px}
+table{width:100%;border-collapse:collapse;font-size:13px;table-layout:fixed}
+th{overflow:hidden;text-overflow:ellipsis}
+td{overflow:hidden;text-overflow:ellipsis}
 th{text-align:right;font-size:9.5px;text-transform:uppercase;
   letter-spacing:.2em;color:var(--faint);font-weight:700;
   padding:0 0 12px 16px;white-space:nowrap;
@@ -262,19 +264,19 @@ function coins(d){
             s_w: e?e.w:null, s_n: e?e.n:null};
   }).sort((a,b)=>(b.asset_pnl??-1e9)-(a.asset_pnl??-1e9));
   let h=`<tr>
-     <th data-tip="which coin. Green dot = its trader process is running; 'excl' = excluded from live trading">Asset</th>
-     <th data-tip="time left in this coin's current 15-minute window">Window</th>
-     <th data-tip="live spot price from Coinbase - what the coin trades at right now">Price</th>
-     <th data-tip="the strike this window settles against: above it at expiry = YES wins">Strike</th>
-     <th data-tip="which side is winning right now: price above the strike = YES (over), below = NO (under)">Now</th>
-     <th class="sm-hide" data-tip="how far spot is from the strike, in basis points. Positive = above the strike, so YES (over) is currently winning">Dist</th>
-     <th data-tip="current price of the YES side from the live orderbook">Ask</th>
-     <th class="sm-hide" data-tip="our model's probability that YES wins. Edge = this vs the ask">P(yes)</th>
-     <th data-tip="net settled profit for this asset since the pricing fix (2026-08-26), from Kalshi's records">P/L</th>
-     <th data-tip="this asset's settled P&L today (Central day)">Today</th>
-     <th data-tip="orders filled on this asset since going live">Fills</th>
-     <th data-tip="settled wins / settled trades, from the exchange">W/L</th>
-     <th class="sm-hide" data-tip="5-minute median spread in cents; \u21af flags a momentary spike the entry gate sits out">Spread</th></tr>`;
+     <th style="width:9%" data-tip="which coin. Green dot = its trader process is running; 'excl' = excluded from live trading">Asset</th>
+     <th style="width:7%" data-tip="time left in this coin's current 15-minute window">Window</th>
+     <th style="width:9%" data-tip="live spot price from Coinbase - what the coin trades at right now">Price</th>
+     <th style="width:9%" data-tip="the strike this window settles against: above it at expiry = YES wins">Strike</th>
+     <th style="width:6%" data-tip="which side is winning right now: price above the strike = YES (over), below = NO (under)">Now</th>
+     <th style="width:6%" class="sm-hide" data-tip="how far spot is from the strike, in basis points. Positive = above the strike, so YES (over) is currently winning">Dist</th>
+     <th style="width:6%" data-tip="current price of the YES side from the live orderbook">Ask</th>
+     <th style="width:6%" class="sm-hide" data-tip="our model's probability that YES wins. Edge = this vs the ask">P(yes)</th>
+     <th style="width:8%" data-tip="net settled profit for this asset since the pricing fix (2026-08-26), from Kalshi's records">P/L</th>
+     <th style="width:8%" data-tip="this asset's settled P&L today (Central day)">Today</th>
+     <th style="width:6%" data-tip="orders filled on this asset since going live">Fills</th>
+     <th style="width:7%" data-tip="settled wins / settled trades, from the exchange">W/L</th>
+     <th style="width:7%" class="sm-hide" data-tip="5-minute median spread in cents; \u21af flags a momentary spike the entry gate sits out">Spread</th></tr>`;
   for(const c of rows){
     const dist=c.dist_bps==null?"—":(c.dist_bps>0?"+":"")+c.dist_bps.toFixed(1);
     h+=`<tr class="${c.excluded?"excluded":""}" ${c.excluded?'data-tip="excluded from live trading - watched, never traded"':""}>
@@ -378,19 +380,19 @@ function feed(d){
   const r=d.attempts_feed||[];
   if(!r.length){$("feed").innerHTML='<tr><td class="faint">no attempts yet</td></tr>';return;}
   let h=`<tr>
-    <th data-tip="when the order was sent (Central time)">Time</th>
-    <th data-tip="\u25cf filled  \u00b7  \u25cb accepted but nothing crossed">Fill</th>
-    <th data-tip="which coin's 15-minute market">Asset</th>
-    <th data-tip="the bet: over = price finishes above the strike, under = below. (Kalshi calls these yes/no)">Side</th>
-    <th data-tip="contracts filled / contracts requested">Qty</th>
-    <th data-tip="what one contract cost us (a NO at yes-price 0.90 costs 0.10)">Cost</th>
-    <th data-tip="gross payoff multiple if it wins: a 0.10 contract pays $1.00 = 10x">Pays</th>
-    <th class="sm-hide" data-tip="how deep into the 15-minute window the order was placed (0:00 = window open)">Opened at</th>
-    <th data-tip="time remaining to expiry when the order was placed">Left</th>
-    <th data-tip="WON settled our way \u00b7 lost settled against us \u00b7 cut we exited early \u00b7 miss never filled \u00b7 open still riding">Result</th>
-    <th data-tip="net profit after fees, from the exchange-settled close">Net</th>
-    <th data-tip="open positions only: what our side's current bid pays to close now, with unrealized P&L against cost">Value</th>
-    <th data-tip="open positions only: net profit if this settles our way - every contract pays $1">If won</th></tr>`;
+    <th style="width:11%" data-tip="when the order was sent (Central time)">Time</th>
+    <th style="width:4%" data-tip="\u25cf filled  \u00b7  \u25cb accepted but nothing crossed">Fill</th>
+    <th style="width:6%" data-tip="which coin's 15-minute market">Asset</th>
+    <th style="width:6%" data-tip="the bet: over = price finishes above the strike, under = below. (Kalshi calls these yes/no)">Side</th>
+    <th style="width:5%" data-tip="contracts filled / contracts requested">Qty</th>
+    <th style="width:6%" data-tip="what one contract cost us (a NO at yes-price 0.90 costs 0.10)">Cost</th>
+    <th style="width:5%" data-tip="gross payoff multiple if it wins: a 0.10 contract pays $1.00 = 10x">Pays</th>
+    <th style="width:8%" class="sm-hide" data-tip="how deep into the 15-minute window the order was placed (0:00 = window open)">Opened at</th>
+    <th style="width:6%" data-tip="time remaining to expiry when the order was placed">Left</th>
+    <th style="width:7%" data-tip="WON settled our way \u00b7 lost settled against us \u00b7 cut we exited early \u00b7 miss never filled \u00b7 open still riding">Result</th>
+    <th style="width:7%" data-tip="net profit after fees, from the exchange-settled close">Net</th>
+    <th style="width:12%" data-tip="open positions only: what our side's current bid pays to close now, with unrealized P&L against cost">Value</th>
+    <th style="width:7%" data-tip="open positions only: net profit if this settles our way - every contract pays $1">If won</th></tr>`;
   for(const x of r){
     const hit=+x.filled>0, px=x.cost, o=x.outcome;
     let res='<span class="faint">\u2014</span>', net='';
