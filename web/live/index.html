@@ -177,6 +177,14 @@ tr.excluded .dot{background:transparent;border:1px solid var(--faint)}
   text-transform:uppercase;padding:4px 10px;cursor:pointer}
 #themeBtn:hover{color:var(--ink)}
 #themeBtn:focus-visible{outline:2px solid var(--warn);outline-offset:2px}
+
+.posrow{display:flex;gap:10px;flex-wrap:wrap;min-height:40px;align-items:center}
+.pos{display:flex;align-items:baseline;gap:9px;padding:8px 13px;
+  border:1px solid var(--wash-open-line);border-left:3px solid var(--warn);
+  background:var(--wash-open);font-family:var(--mono);font-size:12.5px;
+  font-variant-numeric:tabular-nums;animation:breathe 2.4s ease-in-out infinite}
+.pos .sym{font-family:var(--din);font-weight:700;letter-spacing:.1em;color:var(--warn)}
+.flat{color:var(--faint);font-size:11.5px;letter-spacing:.14em;text-transform:uppercase}
 </style>
 
 <div id="tip"></div>
@@ -196,7 +204,12 @@ tr.excluded .dot{background:transparent;border:1px solid var(--faint)}
   </div>
   <div class="hero" id="hero"></div>
 </div>
-<div class="card">
+<div class="card" id="poscard">
+  <h2>Open positions</h2>
+  <div class="posrow" id="positions"></div>
+</div>
+
+<div class="card" style="margin-top:18px">
   <h2>Per asset</h2>
   <div class="scroll"><table id="coins"></table></div>
   <div class="note" id="coinnote"></div>
@@ -254,6 +267,21 @@ function fmtPx(v){
   // sub-dollar coins need the precision; BTC does not need cents
   return v>=1000?v.toLocaleString(undefined,{maximumFractionDigits:0})
         :v>=10?v.toFixed(2):v.toFixed(4);
+}
+function positions(d){
+  const open=(d.attempts_feed||[]).filter(x=>+x.filled>0&&!x.outcome);
+  const left=d.window?d.window.label:null;
+  $("positions").innerHTML=open.length?open.map(x=>{
+    const m=x.mtm||{};
+    return `<div class="pos" data-tip="open position: entered at ${x.cost!=null?x.cost.toFixed(3):"?"} per contract; Now = what closing at the current bid pays; the last figure is net profit if it settles your way">
+      <span class="sym">${(x.asset||"").toUpperCase()}</span>
+      <span class="dim">${x.side==="yes"?"over":"under"}</span>
+      <span>${x.filled}×${x.cost!=null?x.cost.toFixed(2):"?"}</span>
+      ${m.value!=null?`<span>now $${m.value.toFixed(2)} <span class="${m.unreal>0?"up":m.unreal<0?"down":"dim"}">(${m.unreal>=0?"+":""}${m.unreal.toFixed(2)})</span></span>`:""}
+      ${m.max_win!=null?`<span class="up">→ +$${m.max_win.toFixed(2)}</span>`:""}
+      ${left?`<span class="faint">${left} left</span>`:""}
+    </div>`;
+  }).join(""):`<span class="flat">flat — no open positions</span>`;
 }
 function coins(d){
   // per-asset P/L from Kalshi settlements, not our journal
@@ -436,7 +464,7 @@ async function tick(){
     const d=await (await fetch("api/status",{cache:"no-store"})).json();
     $("err").innerHTML=(d.exchange&&d.exchange.error)
       ? `<div class="err">Kalshi read failed: ${d.exchange.error}</div>`:"";
-    hero(d);coins(d);risk(d);exec(d);daily(d);feed(d);
+    hero(d);positions(d);coins(d);risk(d);exec(d);daily(d);feed(d);
     if(d.balance_series){balSeries=d.balance_series;drawBal();}
     if(d.window){clockLeft=d.window.left;}
     $("when").textContent=new Date().toLocaleString([],{month:"numeric",day:"numeric",hour:"2-digit",minute:"2-digit",second:"2-digit"});
