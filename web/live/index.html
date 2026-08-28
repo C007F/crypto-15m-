@@ -144,8 +144,9 @@ tr.open-row{animation:breathe 2.4s ease-in-out infinite}
   .hero div:last-child .v{font-size:16px}
   .hero .v{font-size:24px}
   .grid{gap:28px}
-  table{font-size:12px}
-  th,td{padding-left:10px}
+  table{font-size:13px}
+  th,td{padding-left:8px}
+  .pos{font-size:11.5px;padding:6px 9px;gap:6px}
   .sm-hide{display:none}
 }
 
@@ -298,15 +299,15 @@ function coins(d){
      <th style="width:9%" data-tip="which coin. Green dot = its trader process is running; 'excl' = excluded from live trading">Asset</th>
      <th style="width:7%" data-tip="time left in this coin's current 15-minute window">Window</th>
      <th style="width:9%" data-tip="live spot price from Coinbase - what the coin trades at right now">Price</th>
-     <th style="width:9%" data-tip="the strike this window settles against: above it at expiry = YES wins">Strike</th>
+     <th style="width:9%" class="sm-hide" data-tip="the strike this window settles against: above it at expiry = YES wins">Strike</th>
      <th style="width:6%" data-tip="which side is winning right now: price above the strike = YES (over), below = NO (under)">Now</th>
      <th style="width:6%" class="sm-hide" data-tip="how far spot is from the strike, in basis points. Positive = above the strike, so YES (over) is currently winning">Dist</th>
-     <th style="width:6%" data-tip="current price of the YES side from the live orderbook">Ask</th>
+     <th style="width:6%" class="sm-hide" data-tip="current price of the YES side from the live orderbook">Ask</th>
      <th style="width:6%" class="sm-hide" data-tip="our model's probability that YES wins. Edge = this vs the ask">P(yes)</th>
      <th style="width:8%" data-tip="net settled profit for this asset since the pricing fix (2026-08-26), from Kalshi's records">P/L</th>
      <th style="width:8%" data-tip="this asset's settled P&L today (Central day)">Today</th>
-     <th style="width:6%" data-tip="orders filled on this asset since going live">Fills</th>
-     <th style="width:7%" data-tip="settled wins / settled trades, from the exchange">W/L</th>
+     <th style="width:6%" class="sm-hide" data-tip="orders filled on this asset since going live">Fills</th>
+     <th style="width:7%" class="sm-hide" data-tip="settled wins / settled trades, from the exchange">W/L</th>
      <th style="width:7%" class="sm-hide" data-tip="5-minute median spread in cents; \u21af flags a momentary spike the entry gate sits out">Spread</th></tr>`;
   for(const c of rows){
     const dist=c.dist_bps==null?"—":(c.dist_bps>0?"+":"")+c.dist_bps.toFixed(1);
@@ -316,17 +317,17 @@ function coins(d){
         ${c.excluded?' <span class="warn" style="font-size:10px">excl</span>':""}</td>
       <td class="dim">${c.clock||"—"}</td>
       <td>${fmtPx(c.spot)}</td>
-      <td class="dim">${fmtPx(c.strike)}</td>
+      <td class="dim sm-hide">${fmtPx(c.strike)}</td>
       <td>${c.dist_bps==null?"\u2014":c.dist_bps>=0
           ?'<span class="up" data-tip="spot is over the strike - the YES side wins if it settles here">OVER</span>'
           :'<span class="down" data-tip="spot is under the strike - the NO side wins if it settles here">UNDER</span>'}</td>
       <td class="sm-hide ${cls(c.dist_bps)}">${dist}</td>
-      <td>${c.yes_ask==null?"—":c.yes_ask.toFixed(2)}</td>
+      <td class="sm-hide">${c.yes_ask==null?"—":c.yes_ask.toFixed(2)}</td>
       <td class="dim sm-hide">${c.p_yes==null?"—":c.p_yes.toFixed(2)}</td>
       <td class="${cls(c.asset_pnl)}">${c.asset_pnl==null?"—":money(c.asset_pnl)}</td>
       <td class="${cls(c.asset_today)}">${c.asset_today==null?"—":money(c.asset_today)}</td>
-      <td>${c.fills||0}</td>
-      <td><span class="up">${c.s_w??c.wins??0}</span><span class="faint">/</span><span class="dim">${c.s_n??c.closed??0}</span></td>
+      <td class="sm-hide">${c.fills||0}</td>
+      <td class="sm-hide"><span class="up">${c.s_w??c.wins??0}</span><span class="faint">/</span><span class="dim">${c.s_n??c.closed??0}</span></td>
       <td class="sm-hide">${(()=>{const sp=spr[c.key];
         if(!sp||sp.med==null) return '<span class="dim">—</span>';
         const spike=sp.now>Math.max(2*sp.med,sp.med+2);
@@ -404,26 +405,28 @@ function fmtTs(iso){
   // because a feed that quietly mixes yesterday and today in UTC misleads.
   const t=new Date(iso);
   if(isNaN(t)) return (iso||"").slice(11,19);
+  const small=innerWidth<760;
   return t.toLocaleString("en-US",{timeZone:"America/Chicago",
-    month:"numeric",day:"numeric",hour:"2-digit",minute:"2-digit",second:"2-digit",hour12:false});
+    month:"numeric",day:"numeric",hour:"2-digit",minute:"2-digit",
+    ...(small?{}:{second:"2-digit"}),hour12:false});
 }
 function feed(d){
   const r=d.attempts_feed||[];
   if(!r.length){$("feed").innerHTML='<tr><td class="faint">no attempts yet</td></tr>';return;}
   let h=`<tr>
     <th style="width:11%" data-tip="when the order was sent (Central time)">Time</th>
-    <th style="width:4%" data-tip="\u25cf filled  \u00b7  \u25cb accepted but nothing crossed">Fill</th>
+    <th style="width:4%" class="sm-hide" data-tip="\u25cf filled  \u00b7  \u25cb accepted but nothing crossed">Fill</th>
     <th style="width:6%" data-tip="which coin's 15-minute market">Asset</th>
     <th style="width:6%" data-tip="the bet: over = price finishes above the strike, under = below. (Kalshi calls these yes/no)">Side</th>
-    <th style="width:5%" data-tip="contracts filled / contracts requested">Qty</th>
+    <th style="width:5%" class="sm-hide" data-tip="contracts filled / contracts requested">Qty</th>
     <th style="width:6%" data-tip="what one contract cost us (a NO at yes-price 0.90 costs 0.10)">Cost</th>
-    <th style="width:5%" data-tip="gross payoff multiple if it wins: a 0.10 contract pays $1.00 = 10x">Pays</th>
+    <th style="width:5%" class="sm-hide" data-tip="gross payoff multiple if it wins: a 0.10 contract pays $1.00 = 10x">Pays</th>
     <th style="width:8%" class="sm-hide" data-tip="how deep into the 15-minute window the order was placed (0:00 = window open)">Opened at</th>
-    <th style="width:6%" data-tip="time remaining to expiry when the order was placed">Left</th>
+    <th style="width:6%" class="sm-hide" data-tip="time remaining to expiry when the order was placed">Left</th>
     <th style="width:7%" data-tip="WON settled our way \u00b7 lost settled against us \u00b7 cut we exited early \u00b7 miss never filled \u00b7 open still riding">Result</th>
     <th style="width:7%" data-tip="net profit after fees, from the exchange-settled close">Net</th>
-    <th style="width:12%" data-tip="open positions only: what our side's current bid pays to close now, with unrealized P&L against cost">Value</th>
-    <th style="width:7%" data-tip="open positions only: net profit if this settles our way - every contract pays $1">If won</th></tr>`;
+    <th style="width:12%" class="sm-hide" data-tip="open positions only: what our side's current bid pays to close now, with unrealized P&L against cost">Value</th>
+    <th style="width:7%" class="sm-hide" data-tip="open positions only: net profit if this settles our way - every contract pays $1">If won</th></tr>`;
   for(const x of r){
     const hit=+x.filled>0, px=x.cost, o=x.outcome;
     let res='<span class="faint">\u2014</span>', net='';
@@ -442,18 +445,18 @@ function feed(d){
     const isOpen = hit && !o;
     h+=`<tr class="${isOpen?"open-row":""}">
       <td class="dim" style="font-family:var(--mono)">${fmtTs(x.ts)}</td>
-      <td class="${hit?"up":"down"}" data-tip="${hit?"order filled":"order missed - accepted but nothing crossed"}">${hit?"\u25cf":"\u25cb"}</td>
+      <td class="sm-hide ${hit?"up":"down"}" data-tip="${hit?"order filled":"order missed - accepted but nothing crossed"}">${hit?"\u25cf":"\u25cb"}</td>
       <td><span class="coin">${(x.asset||"").toUpperCase()}</span></td>
       <td class="dim" data-tip="${x.side==="yes"?"bet the price finishes ABOVE the strike (Kalshi side: yes)":"bet the price finishes BELOW the strike (Kalshi side: no)"}">${x.side==="yes"?"over":x.side==="no"?"under":""}</td>
-      <td>${hit?x.filled:0}/${x.requested||0}</td>
+      <td class="sm-hide">${hit?x.filled:0}/${x.requested||0}</td>
       <td>${px?px.toFixed(3):"\u2014"}</td>
-      <td class="dim">${px?(1/px).toFixed(0)+"x":"\u2014"}</td>
+      <td class="dim sm-hide">${px?(1/px).toFixed(0)+"x":"\u2014"}</td>
       <td class="dim sm-hide">${mss(900-(x.remaining_sec||0))}</td>
-      <td class="dim">${mss(x.remaining_sec||0)}</td>
+      <td class="dim sm-hide">${mss(x.remaining_sec||0)}</td>
       <td>${res}</td>
       <td>${net}</td>
-      <td>${val}</td>
-      <td>${pot}</td>
+      <td class="sm-hide">${val}</td>
+      <td class="sm-hide">${pot}</td>
     </tr>`;
   }
   $("feed").innerHTML=h;
