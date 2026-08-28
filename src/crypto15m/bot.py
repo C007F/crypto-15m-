@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import time
 from datetime import datetime, timezone
 from decimal import Decimal
@@ -29,6 +30,20 @@ from crypto15m.trials import BOOKS, LIVE_BOOKS, TrialBook
 # starts. It went 0 for 5 live and carried $1.04 of a $1.05 total loss while
 # the other five combined were within a cent of flat.
 NO_LIVE_ASSETS = frozenset({"zec", "near"})
+
+# Board Memo 006 part 3a. Lines 149 and 208 called log.warning against a name
+# this module never defined or imported, so either except block firing raised
+# NameError from inside the handler - a crash handler that crashes.
+log = logging.getLogger(__name__)
+
+def _shadow_007(frame, views) -> dict:
+    """Memo 007. Never raises; never affects the live expert."""
+    try:
+        from crypto15m.study.micro_alts import shadow_from_frame
+        return {"shadow_007": shadow_from_frame(frame, views)}
+    except Exception:
+        return {}
+
 
 
 class Mind:
@@ -91,9 +106,14 @@ class Mind:
         _seed = sum(ord(c) for c in settings.asset.key)
         self._candle_every = 12.0 + (_seed % 120) / 10.0
         self.ladder = LadderObserver(settings.data_dir)
-        # Built lazily on first use, rebuilt daily. A failed build degrades to
-        # the Gaussian rather than blocking trading.
+        # Rebuilt daily, persisted across restarts (Memo 006 part 1). A failed
+        # build still degrades to the Gaussian rather than blocking trading -
+        # Memo 006 part 4 counts how often that happens instead of assuming.
         self.history = EmpiricalMoves(settings.asset.spot_product)
+        if self.history.load_cached():
+            log.info("%s: empirical moves loaded from cache (%.1fh old)",
+                     settings.asset.spot_product,
+                     (time.time() - self.history.built_at) / 3600.0)
         self.vol = settings.default_vol_bps
 
     def _refresh_candles(self) -> None:
@@ -140,7 +160,9 @@ class Mind:
         # entry gate must decline rather than price off it.
         frame.book_stale = bool(getattr(self.client, "book_stale", False))
         try:
-            if self.history.stale:
+            # should_build, not stale: a failed build sets a backoff window and
+            # this line runs every poll tick (Memo 006 part 2).
+            if self.history.should_build:
                 self.history.build(self.client.session)
             p = self.history.p_yes(float(frame.distance_bps), frame.remaining_sec)
             if p is not None:
@@ -247,6 +269,12 @@ class Mind:
                 "uncertainty": gated.uncertainty,
                 "experts": {v.name: {"p": v.p_yes, "u": v.uncertainty} for v in views},
                 "distance_bps": frame.distance_bps,
+                # Memo 006 part 4: was this tick priced with the measured move
+                # distribution, or on the Gaussian fallback? The board declined
+                # to gate entries on this without evidence; this is the
+                # evidence. Pairs with the same flag on fill events.
+                "hist_ok": frame.hist_p_yes is not None,
+                **(_shadow_007(frame, views)),
             },
             ticker=frame.market.ticker,
         )

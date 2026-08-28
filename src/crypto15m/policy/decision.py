@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from decimal import ROUND_DOWN, Decimal
 
 from crypto15m.config import Settings
@@ -8,6 +9,10 @@ from crypto15m.costs.fees import taker_fee
 from crypto15m.costs.ticks import round_buy_price, yes_sell_price_for_no_buy
 from crypto15m.domain import ExpertView, Intent, MarketQuote, Side
 from crypto15m.perception.features import FeatureFrame
+
+log = logging.getLogger(__name__)
+# Board Memo 003. Process-local; the live.log line is the scoreboard.
+_stale_declines = 0
 
 
 def conviction_size(max_contracts: Decimal, ev_pc: Decimal, buffer: Decimal, uncertainty: Decimal) -> Decimal:
@@ -43,8 +48,13 @@ def decide(
 
     # If the real orderbook could not be read, the quote on this frame is the
     # /markets summary - the pricing that filled nothing. Decline rather than
-    # trade blind on it.
+    # trade blind on it. Memo 003: log a counted line so the next storm we
+    # can say how many entries the gate declined instead of arguing about it.
     if getattr(features, "book_stale", False):
+        global _stale_declines
+        _stale_declines += 1
+        log.info("declined: book_stale n=%d ticker=%s",
+                 _stale_declines, features.market.ticker)
         return None
 
     # Price band. The cheap leg only pays inside 0.02-0.50; outside it the

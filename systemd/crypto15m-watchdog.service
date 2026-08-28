@@ -1,0 +1,9 @@
+[Unit]
+Description=Crypto 15m storm watchdog (Memo 004 phase 1 — alerts only)
+After=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/cam/projects/crypto-15m-bot
+Environment=PYTHONUNBUFFERED=1 PYTHONPATH=/home/cam/projects/crypto-15m-bot/src
+ExecStart=/home/cam/projects/crypto-15m-bot/.venv/bin/python /home/cam/projects/crypto-15m-bot/scripts/watchdog.py

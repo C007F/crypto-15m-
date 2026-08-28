@@ -1,14 +1,38 @@
 from __future__ import annotations
 
 import argparse
+import logging
 import sys
 import time
 import zlib
 
+from crypto15m.assets import poll_jitter_sec
 from crypto15m.bot import Mind, render_watch
 from crypto15m.config import load_settings
 from crypto15m.kalshi.client import KalshiClient
 from crypto15m.meta.gate import gate
+
+
+def _configure_logging() -> None:
+    """Board Memo 006 part 3b.
+
+    No logging config existed in the live path, so Python's lastResort handler
+    emitted WARNING and above only: every 'empirical moves from N candles'
+    success line was structurally invisible. Fourteen thousand failures were in
+    the logs and not one success, which made "did the rebuild ever work" an
+    unanswerable question during the 8/27-28 storm.
+
+    Root stays at WARNING and urllib3 is pinned there explicitly - turning on
+    INFO globally would put request-level chatter into a live.log that is
+    already 24MB per asset.
+    """
+    logging.basicConfig(
+        level=logging.WARNING,
+        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+        stream=sys.stdout,
+    )
+    logging.getLogger("crypto15m").setLevel(logging.INFO)
+    logging.getLogger("urllib3").setLevel(logging.WARNING)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -25,6 +49,7 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("status", help="Recent journal events.")
     sub.add_parser("whoami", help="Kalshi balance (needs API key).")
     args = parser.parse_args(argv)
+    _configure_logging()
     settings = load_settings()
     mind = Mind(settings, live=False)
 
@@ -86,7 +111,7 @@ def main(argv: list[str] | None = None) -> int:
                 backoff = min(60.0, max(2.0, backoff * 2))
                 print(f"step failed ({type(exc).__name__}: {exc}); "
                       f"backing off {backoff:.0f}s", flush=True)
-            time.sleep(settings.poll_sec + backoff)
+            time.sleep(settings.poll_sec + backoff + poll_jitter_sec(settings.asset.key))
 
     if args.cmd == "live":
         if not args.i_understand_risk:
@@ -107,7 +132,7 @@ def main(argv: list[str] | None = None) -> int:
                 backoff = min(60.0, max(2.0, backoff * 2))
                 print(f"LIVE step failed ({type(exc).__name__}: {exc}); "
                       f"backing off {backoff:.0f}s", flush=True)
-            time.sleep(settings.poll_sec + backoff)
+            time.sleep(settings.poll_sec + backoff + poll_jitter_sec(settings.asset.key))
 
     if args.cmd == "status":
         for row in mind.journal.recent():

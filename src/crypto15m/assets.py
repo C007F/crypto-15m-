@@ -11,6 +11,7 @@ lead/lag.
 """
 from __future__ import annotations
 
+import zlib
 from dataclasses import dataclass
 
 
@@ -56,3 +57,15 @@ def get(key: str) -> Asset:
     if k not in ASSETS:
         raise SystemExit(f"unknown asset {k!r}; known: {', '.join(sorted(ASSETS))}")
     return ASSETS[k]
+
+
+def poll_jitter_sec(key: str) -> float:
+    """Board Memo 005 part 3. ±0.15s, stable across restarts.
+
+    Seven traders sharing a 3s freshness clock REST-rushed in the same
+    instant when a book file vanished. A per-asset offset on the poll sleep
+    means those fallbacks cannot land in the same second. Seeded from the
+    name, not hash(), which Python randomises per process.
+    """
+    return ((zlib.crc32(key.encode()) % 301) - 150) / 1000.0
+

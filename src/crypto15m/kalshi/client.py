@@ -91,6 +91,12 @@ class KalshiClient:
         self.session = requests.Session()
         self.session.headers.update({"User-Agent": "crypto-15m-mind/0.3"})
         self._private_key = None
+        # Instance cache so tests (and a future second client) cannot leak
+        # a failed read into someone else's tick. Class-level used to.
+        self._ob_cache: dict = {}
+        self.book_stale = False
+        # Memo 005 part 3: tickers we already waited one tick on.
+        self._rest_deferred: set[str] = set()
 
     def _url(self, path: str) -> str:
         return f"{self.settings.rest_base}{_guard_path(path)}"
@@ -169,7 +175,14 @@ class KalshiClient:
             top = self._streamed_top(cached)
             if top is not None:
                 self.book_stale = False
+                self._rest_deferred.discard(cached)
                 return replace(base, **top)
+            # Memo 005 part 3: stream is alive and the file is gone - window
+            # just rotated, or discover deleted us. Wait one tick instead of
+            # REST-rushing with the other six traders.
+            if self._should_defer_rest(cached):
+                self.book_stale = True
+                return None
         if cached:
             try:
                 m = self.get_market(cached)
@@ -193,15 +206,22 @@ class KalshiClient:
         self._open_market_base = out
         return out
 
-    _ob_cache: dict = {}
-
     def orderbook_top(self, ticker: str) -> tuple | None:
         # Short TTL cache. Adding an orderbook read to every tick doubled this
         # process's request rate, and 7 traders at POLL_SEC=2 sat on Kalshi's
         # ceiling. The book does not meaningfully change inside one poll, so a
         # sub-poll cache is free accuracy-wise and halves the calls.
+        #
+        # Board Memo 003: a cached FAILURE is still a failure. with_book()
+        # resets book_stale=False at the start of every tick; if this path
+        # returns cached None without setting the flag, the next ~3 ticks at
+        # POLL_SEC=0.5 price off the /markets summary with the gate standing
+        # open. Keep caching None (so a 429 does not retry every 0.5s) but
+        # mark stale on the hit.
         _hit = self._ob_cache.get(ticker)
         if _hit and (time.time() - _hit[0]) < 1.6:
+            if _hit[1] is None:
+                self.book_stale = True
             return _hit[1]
         out = self._orderbook_top_uncached(ticker)
         self._ob_cache[ticker] = (time.time(), out)
@@ -239,6 +259,7 @@ class KalshiClient:
         yes_bids = ob.get("yes_dollars") or []
         no_bids = ob.get("no_dollars") or []
         if not yes_bids or not no_bids:
+            self.book_stale = True
             return None
         # Levels come back ascending; the best bid is the highest price.
         by = max((Decimal(str(px)), Decimal(str(sz))) for px, sz in yes_bids)
@@ -264,20 +285,56 @@ class KalshiClient:
         except (OSError, KeyError, ValueError, json.JSONDecodeError):
             return None
 
+    HEARTBEAT_FILE = "heartbeat"
+    HEARTBEAT_FRESH_SEC = 5.0
+
+    def _heartbeat_fresh(self) -> bool:
+        try:
+            ts = float((self.BOOKS_DIR / self.HEARTBEAT_FILE).read_text())
+        except (OSError, ValueError):
+            return False
+        return (time.time() - ts) < self.HEARTBEAT_FRESH_SEC
+
+    def _book_file_exists(self, ticker: str) -> bool:
+        return (self.BOOKS_DIR / f"{ticker}.json").exists()
+
+    def _should_defer_rest(self, ticker: str) -> bool:
+        """Memo 005 part 3: wait one tick when the stream is alive and the
+        book file is gone. After that one tick, REST is allowed (the stream
+        may be subscribed but still waiting on a snapshot).
+        """
+        if not self._heartbeat_fresh() or self._book_file_exists(ticker):
+            self._rest_deferred.discard(ticker)
+            return False
+        if ticker not in self._rest_deferred:
+            self._rest_deferred.add(ticker)
+            return True
+        return False
+
     def with_book(self, q: MarketQuote) -> MarketQuote:
         """Overlay true book prices/sizes onto a summary quote.
 
         Prefers the WebSocket-streamed book; falls back to a REST orderbook
         read; sets `book_stale` when neither worked so the entry gate declines
         rather than pricing off the summary quote.
+
+        Board Memo 003: every path that returns without a real book, including
+        malformed prices, sets book_stale=True. Board Memo 005 part 3: a
+        fresh stream heartbeat plus a missing file is a window rotation, not
+        a dead stream — wait one tick instead of REST-rushing.
         """
         self.book_stale = False
         top = self._streamed_top(q.ticker)
         if top is None:
+            if self._should_defer_rest(q.ticker):
+                self.book_stale = True
+                return q
             top = self.orderbook_top(q.ticker)
         if top is None:
+            self.book_stale = True
             return q
         if not (0 < top["yes_ask"] < 1) or not (0 < top["no_ask"] < 1):
+            self.book_stale = True
             return q
         # Replace BOTH sides. Overlaying only the asks left yes_bid from the
         # stale summary, so spread = yes_ask - yes_bid mixed two clocks and

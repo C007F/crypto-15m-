@@ -22,8 +22,10 @@ import base64
 import json
 import logging
 import time
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import websockets
 
@@ -36,8 +38,16 @@ log = logging.getLogger("stream")
 WS_URL = "wss://api.elections.kalshi.com/trade-api/ws/v2"
 WS_PATH = "/trade-api/ws/v2"
 BOOKS_DIR = Path(__file__).resolve().parents[3] / "data" / "books"
+HEARTBEAT_PATH = BOOKS_DIR / "heartbeat"
+SHADOW_PATH = BOOKS_DIR.parent / "calendar_shadow.jsonl"
 DISCOVER_EVERY = 20.0        # re-list open markets this often (1 REST call/series)
 WRITE_MIN_GAP = 0.15         # per-ticker write throttle, seconds
+ET = ZoneInfo("America/New_York")
+
+# Board Memo 005 part 2. Synthesized tickers are LOGGED against discover()
+# for 24h before they may drive a subscribe. Flip only after the chairman
+# reviews the shadow log.
+SHADOW_CALENDAR = True
 
 
 class Book:
@@ -79,6 +89,51 @@ class Book:
         }
 
 
+def series_of(ticker: str) -> str:
+    return ticker.split("-", 1)[0]
+
+
+def tickers_to_drop(held: set[str], want: set[str], ok_series: set[str]) -> set[str]:
+    """Board Memo 005 part 1.
+
+    Only drop a ticker whose series listed successfully and which is
+    genuinely gone. A 429ed series is absence of evidence, not evidence of
+    absence — keep its books.
+    """
+    drop: set[str] = set()
+    for t in held:
+        if series_of(t) not in ok_series:
+            continue
+        if t not in want:
+            drop.add(t)
+    return drop
+
+
+def synthesize_window_tickers(now: datetime | None = None) -> dict[str, str]:
+    """Current-window ticker per series, from the clock. No API.
+
+    Kalshi 15m crypto tickers are `{series}-{YY}{MON}{DD}{HHMM}-{MM}` where
+    HHMM is the window CLOSE in America/New_York and MM is that close's
+    minutes (00/15/30/45). Example: KXBTC15M-26AUG281215-15.
+    """
+    now_et = (now or datetime.now(timezone.utc)).astimezone(ET)
+    close_min = ((now_et.minute // 15) + 1) * 15
+    close = now_et.replace(second=0, microsecond=0)
+    if close_min >= 60:
+        close = close.replace(minute=0) + timedelta(hours=1)
+    else:
+        close = close.replace(minute=close_min)
+    token = f"{close.strftime('%y')}{close.strftime('%b').upper()}{close.strftime('%d')}{close.strftime('%H%M')}-{close.strftime('%M')}"
+    return {spec.series: f"{spec.series}-{token}" for spec in ASSETS.values()}
+
+
+def write_heartbeat(now: float | None = None) -> None:
+    BOOKS_DIR.mkdir(parents=True, exist_ok=True)
+    tmp = HEARTBEAT_PATH.with_suffix(".tmp")
+    tmp.write_text(str(now if now is not None else time.time()))
+    tmp.replace(HEARTBEAT_PATH)
+
+
 def _ws_headers(client: KalshiClient, settings) -> dict:
     from cryptography.hazmat.primitives import hashes
     from cryptography.hazmat.primitives.asymmetric import padding
@@ -106,20 +161,55 @@ class Streamer:
         BOOKS_DIR.mkdir(parents=True, exist_ok=True)
 
     # ------------------------------------------------------------- discovery
-    def discover(self) -> set[str]:
-        """Current window's market per series. Runs in a thread, REST is fine
-        here: 8 calls every 20s is nothing next to the polling it replaces."""
-        out: set[str] = set()
+    def discover(self) -> tuple[set[str], set[str]]:
+        """Current window's market per series.
+
+        Returns (tickers found, series that listed without error). A 429ed
+        series is omitted from the second set so cleanup will not treat it
+        as closed (Memo 005 part 1).
+        """
+        found: set[str] = set()
+        ok_series: set[str] = set()
         for key, spec in ASSETS.items():
             try:
                 ms = self.client.public_get(
                     "/markets", {"series_ticker": spec.series,
                                  "status": "open", "limit": 2})
-            except Exception:
+            except Exception as exc:
+                log.warning("discover failed for %s: %s", spec.series, str(exc)[:80])
                 continue
+            ok_series.add(spec.series)
             for m in ms.get("markets") or []:
-                out.add(m["ticker"])
-        return out
+                ticker = m.get("ticker")
+                if ticker:
+                    found.add(ticker)
+        return found, ok_series
+
+    def _record_calendar_shadow(self, want: set[str], ok_series: set[str]) -> None:
+        """Memo 005 part 2: log synthesized tickers against discover().
+
+        Does not subscribe. After 24h the chairman can flip SHADOW_CALENDAR
+        off and let synthesis drive the subscribe path.
+        """
+        synth = synthesize_window_tickers()
+        synth_set = set(synth.values())
+        missing = sorted(t for t in synth_set if t not in want)
+        extra = sorted(t for t in want if t not in synth_set)
+        row = {
+            "ts": time.time(),
+            "synth": synth,
+            "discovered": sorted(want),
+            "ok_series": sorted(ok_series),
+            "missing": missing,
+            "extra": extra,
+        }
+        try:
+            with SHADOW_PATH.open("a", encoding="utf-8") as fh:
+                fh.write(json.dumps(row) + "\n")
+        except OSError as exc:
+            log.warning("calendar shadow write failed: %s", exc)
+        if missing or extra:
+            log.info("calendar shadow mismatch missing=%s extra=%s", missing, extra)
 
     def write_top(self, ticker: str) -> None:
         book = self.books.get(ticker)
@@ -136,6 +226,11 @@ class Streamer:
         tmp = p.with_suffix(".tmp")
         tmp.write_text(json.dumps(top))
         tmp.replace(p)
+
+    def _drop(self, ticker: str) -> None:
+        self.books.pop(ticker, None)
+        (BOOKS_DIR / f"{ticker}.json").unlink(missing_ok=True)
+        self.subscribed.discard(ticker)
 
     # ------------------------------------------------------------------ main
     async def run(self) -> None:
@@ -160,10 +255,15 @@ class Streamer:
             next_id = 1
             last_discover = 0.0
             while True:
+                write_heartbeat()
                 now = time.time()
                 if now - last_discover > DISCOVER_EVERY:
                     last_discover = now
-                    want = await asyncio.to_thread(self.discover)
+                    want, ok_series = await asyncio.to_thread(self.discover)
+                    if SHADOW_CALENDAR:
+                        self._record_calendar_shadow(want, ok_series)
+                    # Subscribe path uses discover() only. Synthesis is
+                    # shadow until the chairman flips it. Memo 005 part 2.
                     new = want - self.subscribed
                     if new:
                         await ws.send(json.dumps({
@@ -173,12 +273,9 @@ class Streamer:
                         next_id += 1
                         self.subscribed |= new
                         log.info("subscribed %s", sorted(new))
-                    # drop books for closed windows so the dir stays small
-                    for t in list(self.books):
-                        if t not in want:
-                            self.books.pop(t, None)
-                            (BOOKS_DIR / f"{t}.json").unlink(missing_ok=True)
-                            self.subscribed.discard(t)
+                    held = set(self.books) | set(self.subscribed)
+                    for t in tickers_to_drop(held, want, ok_series):
+                        self._drop(t)
                 try:
                     raw = await asyncio.wait_for(ws.recv(), timeout=2.0)
                 except asyncio.TimeoutError:

@@ -303,6 +303,14 @@ def _last_fill_ago(filled) -> int | None:
         return None
 
 
+def _watchdog() -> dict:
+    """Board Memo 004: last watchdog.py pass, read-only."""
+    try:
+        return json.loads((DATA / "watchdog.json").read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {"ok": True, "alerts": [], "n": 0}
+
+
 def build() -> dict:
     pnl_by = live_pnl()
     # Fold the pre-split history back in, so moving LIVE_SINCE did not quietly
@@ -419,6 +427,7 @@ def build() -> dict:
             "start_equity": state.get("start_equity", "0"),
             "killed": (DATA / "LIVE_KILL").exists(),
         },
+        "watchdog": _watchdog(),
     }
 
 

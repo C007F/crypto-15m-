@@ -678,6 +678,11 @@ class TrialBook:
                 "px": str(price),
                 "fee": str(fee),
                 "live": live,
+                # Memo 006 part 4: entries taken while the measured move
+                # distribution was unavailable, i.e. priced on the Gaussian
+                # fallback. Counting these is what the board wants before it
+                # will consider declining them.
+                "hist_ok": frame.hist_p_yes is not None,
             },
             market.ticker,
         )

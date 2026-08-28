@@ -47,6 +47,8 @@ header .now{font-family:var(--mono);font-size:12px;color:var(--dim);
   letter-spacing:.06em}
 header .when{margin-left:auto;font-size:11px;color:var(--faint);
   letter-spacing:.08em}
+header .wdog{display:none;font-size:10px;text-transform:uppercase;letter-spacing:.18em;padding:5px 12px;color:var(--warn);border:1px solid var(--warn);max-width:520px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+header .wdog.on{display:inline-block}
 
 /* mission counters */
 .herowrap{display:grid;grid-template-columns:1.15fr 1fr;gap:0;
@@ -195,6 +197,7 @@ tr.excluded .dot{background:transparent;border:1px solid var(--faint)}
 <header>
   <h1>Chester · Kalshi 15M</h1>
   <span class="tag">Live — Real Money</span>
+  <span class="wdog" id="wdog" data-tip="Board Memo 004 watchdog. Amber = something paged the chairman. Phase 1 is alerts only."></span>
   <span class="clock mono" id="clock" data-tip="time elapsed in the current 15m window - counts up from 0:00 at open to 15:00 at expiry; amber inside the final 2:30">—</span>
   <span class="now mono" id="nowct" data-tip="current time, US Central">—</span>
   <span class="when" id="when">…</span>
@@ -472,8 +475,17 @@ function feed(d){
 }
 
 async function tick(){
+  // watchdog banner painted after fetch below
   try{
     const d=await (await fetch("api/status",{cache:"no-store"})).json();
+    const w=d.watchdog||{}; const el=$("wdog");
+    if(el){
+      const alerts=w.alerts||[];
+      if(w.ok===false && alerts.length){
+        el.textContent=alerts.map(a=>a.msg).join(" · ");
+        el.classList.add("on");
+      } else { el.textContent=""; el.classList.remove("on"); }
+    }
     $("err").innerHTML=(d.exchange&&d.exchange.error)
       ? `<div class="err">Kalshi read failed: ${d.exchange.error}</div>`:"";
     hero(d);positions(d);coins(d);risk(d);exec(d);daily(d);feed(d);
