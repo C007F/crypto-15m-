@@ -422,13 +422,32 @@ def build() -> dict:
     }
 
 
+# The payload is rebuilt by ONE background thread and served from memory.
+# Building per-request took 6.8s (journal scans + jsonl reads) and every
+# page open ate it; now a request costs a dict lookup and the refresher
+# keeps the copy at most a few seconds old.
+_CACHE = {"body": b"{}", "at": 0.0}
+
+
+def _refresher():
+    import threading
+    while True:
+        try:
+            body = json.dumps(build(), default=str).encode()
+            _CACHE["body"] = body
+            _CACHE["at"] = time.time()
+        except Exception:
+            pass
+        time.sleep(3)
+
+
 class Handler(BaseHTTPRequestHandler):
     def log_message(self, *a):
         pass
 
     def do_GET(self):
         if self.path.startswith("/status"):
-            body = json.dumps(build(), default=str).encode()
+            body = _CACHE["body"]
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
             self.send_header("Cache-Control", "no-store")
@@ -440,6 +459,8 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def main() -> None:
+    import threading
+    threading.Thread(target=_refresher, daemon=True).start()
     ThreadingHTTPServer(("127.0.0.1", 8810), Handler).serve_forever()
 
 

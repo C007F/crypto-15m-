@@ -14,6 +14,7 @@ CREATE TABLE IF NOT EXISTS events (
     ticker TEXT,
     payload TEXT NOT NULL
 );
+CREATE INDEX IF NOT EXISTS idx_events_kind_ts ON events(kind, ts);
 """
 
 
