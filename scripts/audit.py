@@ -213,8 +213,10 @@ def _ledger_reconciles():
             (ROOT / "data" / "balance_history.jsonl").read_text().splitlines() if l.strip()]
     ledger = sum(d["pnl"] for d in ex.get("daily") or [])
     expect = hist[0]["balance"] + ledger - wd  # first anchor is the deposit
+    # tolerance: daily rows are rounded to cents, so a few tenths of a cent
+    # of accumulated rounding is expected; a real accounting leak is dollars.
     gap = abs(expect - ex["balance"])
-    return (gap < 0.005,
+    return (gap < 0.02,
             f"anchors+ledger => ${expect:.2f} vs balance ${ex['balance']:.2f} (gap {gap:.4f})")
 
 
