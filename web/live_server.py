@@ -164,6 +164,19 @@ def _sample_spreads() -> dict:
     return out
 
 
+def _balance_series(limit: int = 400) -> list:
+    """(ts, balance) points for the hero chart, downsampled evenly."""
+    p = DATA / "balance_series.jsonl"
+    try:
+        pts = [json.loads(l) for l in p.read_text().splitlines() if l.strip()]
+    except (OSError, json.JSONDecodeError):
+        return []
+    if len(pts) > limit:
+        step = len(pts) / limit
+        pts = [pts[int(i * step)] for i in range(limit - 1)] + [pts[-1]]
+    return [[round(x["ts"]), x["balance"]] for x in pts]
+
+
 def _window_clock() -> dict:
     """Seconds left in the current 15m window. Every asset shares the boundary."""
     now = time.time()
@@ -380,6 +393,7 @@ def build() -> dict:
         "coins": coins,
         "exchange": exchange_truth(),
         "window": _window_clock(),
+        "balance_series": _balance_series(),
         "spreads": _sample_spreads(),
         "attempts_feed": _attempts_feed(orders),
         "era": _era(entries, filled),

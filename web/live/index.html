@@ -49,11 +49,15 @@ header .when{margin-left:auto;font-size:11px;color:var(--faint);
   letter-spacing:.08em}
 
 /* mission counters */
-.hero{display:grid;grid-template-columns:repeat(6,1fr);
-  border-bottom:1px solid var(--line);margin:0 auto 34px}
-.hero div{padding:16px 22px 14px;min-width:0;
+.herowrap{display:grid;grid-template-columns:1.15fr 1fr;gap:0;
+  border-bottom:1px solid var(--line);margin:0 auto 30px}
+.chart{position:relative;border-right:1px solid var(--line-soft);
+  padding:12px 18px 10px 0;min-height:150px}
+.chart canvas{width:100%;height:100%;display:block}
+.hero{display:grid;grid-template-columns:repeat(3,1fr)}
+.hero div{padding:12px 16px 10px;min-width:0;
   border-left:1px solid var(--line-soft)}
-.hero div:first-child{border-left:none;padding-left:0}
+.hero div:nth-child(n+4){border-top:1px solid var(--line-soft)}
 .hero .k{font-size:10px;text-transform:uppercase;letter-spacing:.24em;
   color:var(--dim);margin-bottom:6px}
 .hero .v{font-size:34px;font-weight:300;line-height:1;
@@ -117,6 +121,9 @@ tr.open-row{animation:breathe 2.4s ease-in-out infinite}
   body{padding:0 14px 48px}
   header{gap:12px;padding:14px 0 12px}
   h1{letter-spacing:.22em}
+  .herowrap{grid-template-columns:1fr}
+  .chart{border-right:none;border-bottom:1px solid var(--line-soft);
+    padding:8px 0;min-height:110px}
   .hero{grid-template-columns:1fr 1fr}
   .hero div{padding:16px 12px 14px;border-left:none;
     border-top:1px solid var(--line-soft)}
@@ -171,7 +178,12 @@ tr.excluded .dot{background:transparent;border:1px solid var(--faint)}
   <button id="themeBtn" data-tip="switch theme (remembers your choice; blank choice follows the OS)">theme</button>
 </header>
 <div id="err"></div>
-<div class="hero" id="hero"></div>
+<div class="herowrap">
+  <div class="chart" data-tip="account balance over time, straight from Kalshi - the one number that cannot lie">
+    <canvas id="bal"></canvas>
+  </div>
+  <div class="hero" id="hero"></div>
+</div>
 <div class="card">
   <h2>Per asset</h2>
   <div class="scroll"><table id="coins"></table></div>
@@ -411,12 +423,53 @@ async function tick(){
     $("err").innerHTML=(d.exchange&&d.exchange.error)
       ? `<div class="err">Kalshi read failed: ${d.exchange.error}</div>`:"";
     hero(d);coins(d);risk(d);exec(d);daily(d);feed(d);
+    if(d.balance_series){balSeries=d.balance_series;drawBal();}
     if(d.window){clockLeft=d.window.left;}
     $("when").textContent=new Date().toLocaleString([],{month:"numeric",day:"numeric",hour:"2-digit",minute:"2-digit",second:"2-digit"});
   }catch(e){
     $("err").innerHTML=`<div class="err">dashboard fetch failed: ${e}</div>`;
   }
 }
+function tok(name){return getComputedStyle(document.documentElement).getPropertyValue(name).trim();}
+let balSeries=[];
+function drawBal(){
+  const cv=$("bal"), box=cv.parentElement;
+  if(!balSeries.length||!box.clientWidth) return;
+  const dpr=devicePixelRatio||1, W=box.clientWidth-0, H=Math.max(box.clientHeight-22,90);
+  cv.width=W*dpr; cv.height=H*dpr; cv.style.height=H+"px";
+  const g=cv.getContext("2d"); g.scale(dpr,dpr); g.clearRect(0,0,W,H);
+  const xs=balSeries.map(p=>p[0]), ys=balSeries.map(p=>p[1]);
+  const x0=Math.min(...xs), x1=Math.max(...xs);
+  let y0=Math.min(...ys), y1=Math.max(...ys);
+  const pad=(y1-y0)*0.12||1; y0-=pad; y1+=pad;
+  const X=t=>(t-x0)/(x1-x0||1)*(W-64)+2, Y=v=>H-8-(v-y0)/(y1-y0)*(H-22);
+  const up=ys[ys.length-1]>=ys[0], line=tok(up?"--up":"--down"), dim=tok("--faint");
+  // faint deposit baseline at $200
+  if(200>y0&&200<y1){
+    g.strokeStyle=dim; g.setLineDash([2,5]); g.beginPath();
+    g.moveTo(2,Y(200)); g.lineTo(W-62,Y(200)); g.stroke(); g.setLineDash([]);
+    g.fillStyle=dim; g.font="9px "+tok("--mono"); g.fillText("$200 in",W-58,Y(200)+3);
+  }
+  // area wash
+  g.beginPath(); g.moveTo(X(xs[0]),Y(ys[0]));
+  for(let i=1;i<xs.length;i++) g.lineTo(X(xs[i]),Y(ys[i]));
+  g.lineTo(X(xs[xs.length-1]),H-8); g.lineTo(X(xs[0]),H-8); g.closePath();
+  g.globalAlpha=0.10; g.fillStyle=line; g.fill(); g.globalAlpha=1;
+  // the line
+  g.beginPath(); g.moveTo(X(xs[0]),Y(ys[0]));
+  for(let i=1;i<xs.length;i++) g.lineTo(X(xs[i]),Y(ys[i]));
+  g.strokeStyle=line; g.lineWidth=1.6; g.lineJoin="round"; g.stroke();
+  // endpoint
+  const ex=X(xs[xs.length-1]), ey=Y(ys[ys.length-1]);
+  g.beginPath(); g.arc(ex,ey,3,0,7); g.fillStyle=line; g.fill();
+  g.fillStyle=tok("--ink"); g.font="600 12px "+tok("--mono");
+  g.fillText("$"+ys[ys.length-1].toFixed(2),Math.min(ex+8,W-60),ey+4);
+  // min/max ticks
+  g.fillStyle=dim; g.font="9px "+tok("--mono");
+  g.fillText("$"+y1.toFixed(0),2,12); g.fillText("$"+y0.toFixed(0),2,H-10);
+}
+addEventListener("resize",drawBal);
+new MutationObserver(drawBal).observe(document.documentElement,{attributes:true,attributeFilter:["data-theme"]});
 let clockLeft=null;
 function paintClock(){
   const el=$("clock");

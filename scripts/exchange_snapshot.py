@@ -137,6 +137,24 @@ def main() -> None:
                           .get("market_positions") or [])
     except Exception as e:
         out["error"] = str(e)[:150]
+    # Balance time series for the board's chart. Append when the balance
+    # moved or every 5 minutes, so quiet stretches stay cheap and the curve
+    # is still real. Kalshi's number, nothing derived.
+    try:
+        ser = ROOT / "data" / "balance_series.jsonl"
+        last = None
+        if ser.exists():
+            tail = ser.read_text().splitlines()
+            if tail:
+                last = json.loads(tail[-1])
+        if out["balance"] is not None and (
+                last is None
+                or abs(out["balance"] - last["balance"]) >= 0.005
+                or out["at"] - last["ts"] > 300):
+            with ser.open("a") as fh:
+                fh.write(json.dumps({"ts": out["at"], "balance": out["balance"]}) + chr(10))
+    except Exception:
+        pass
     tmp = OUT.with_suffix(".tmp")
     tmp.write_text(json.dumps(out))
     tmp.replace(OUT)
