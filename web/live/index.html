@@ -442,6 +442,7 @@ function tok(name){return getComputedStyle(document.documentElement).getProperty
 let balSeries=[];
 const RANGES=[["1D",86400],["1W",604800],["1M",2592000],["1Y",31536000],["ALL",null]];
 let balRange=localStorage.getItem("balRange")||"ALL";
+let scrubX=null;
 function paintRanges(){
   $("ranges").innerHTML=RANGES.map(([k])=>
     `<button class="${k===balRange?"on":""}" data-r="${k}">${k}</button>`).join("");
@@ -486,9 +487,27 @@ function drawBal(){
   // the line
   g.beginPath(); g.moveTo(X(xs[0]),Y(ys[0]));
   for(let i=1;i<xs.length;i++) g.lineTo(X(xs[i]),Y(ys[i]));
-  g.strokeStyle=line; g.lineWidth=1.6; g.lineJoin="round"; g.stroke();
-  // endpoint
+  g.shadowColor=line; g.shadowBlur=6;
+  g.strokeStyle=line; g.lineWidth=1.8; g.lineJoin="round"; g.stroke();
+  g.shadowBlur=0;
+  // scrubber: hover anywhere, read the balance at that moment
+  if(scrubX!=null){
+    let idx=0,bd=1e18;
+    for(let i=0;i<xs.length;i++){const dx=Math.abs(X(xs[i])-scrubX);if(dx<bd){bd=dx;idx=i;}}
+    const sx=X(xs[idx]), sy=Y(ys[idx]);
+    g.strokeStyle=dim; g.setLineDash([3,4]); g.beginPath();
+    g.moveTo(sx,4); g.lineTo(sx,H-6); g.stroke(); g.setLineDash([]);
+    g.beginPath(); g.arc(sx,sy,3.5,0,7); g.fillStyle=tok("--ink"); g.fill();
+    const when=new Date(xs[idx]*1000).toLocaleString("en-US",{timeZone:"America/Chicago",
+      month:"numeric",day:"numeric",hour:"numeric",minute:"2-digit"});
+    g.font="600 11px "+tok("--mono"); g.fillStyle=tok("--ink");
+    const lbl="$"+ys[idx].toFixed(2)+"  "+when;
+    const tw=g.measureText(lbl).width, lx=Math.min(Math.max(sx-tw/2,2),W-tw-4);
+    g.fillText(lbl,lx,16);
+  }
+  // endpoint (with a soft Robinhood glow)
   const ex=X(xs[xs.length-1]), ey=Y(ys[ys.length-1]);
+  g.beginPath(); g.arc(ex,ey,7,0,7); g.globalAlpha=0.25; g.fillStyle=line; g.fill(); g.globalAlpha=1;
   g.beginPath(); g.arc(ex,ey,3,0,7); g.fillStyle=line; g.fill();
   g.fillStyle=tok("--ink"); g.font="600 12px "+tok("--mono");
   g.fillText("$"+ys[ys.length-1].toFixed(2),Math.min(ex+8,W-60),ey+4);
@@ -500,6 +519,16 @@ function drawBal(){
   g.fillText("$"+y1.toFixed(0),2,12); g.fillText("$"+y0.toFixed(0),2,H-10);
 }
 paintRanges();
+(function(){
+  const cv=$("bal");
+  const move=e=>{const r=cv.getBoundingClientRect();
+    const cx=(e.touches?e.touches[0].clientX:e.clientX)-r.left;
+    scrubX=cx; drawBal();};
+  cv.addEventListener("mousemove",move);
+  cv.addEventListener("touchmove",move,{passive:true});
+  cv.addEventListener("mouseleave",()=>{scrubX=null;drawBal();});
+  cv.addEventListener("touchend",()=>{scrubX=null;drawBal();});
+})();
 addEventListener("resize",drawBal);
 new MutationObserver(drawBal).observe(document.documentElement,{attributes:true,attributeFilter:["data-theme"]});
 let clockLeft=null;
