@@ -52,7 +52,8 @@ header .when{margin-left:auto;font-size:11px;color:var(--faint);
 .herowrap{display:grid;grid-template-columns:1.15fr 1fr;gap:0;
   border-bottom:1px solid var(--line);margin:0 auto 30px}
 .chart{position:relative;border-right:1px solid var(--line-soft);
-  padding:12px 18px 10px 0;min-height:150px}
+  padding:12px 18px 10px 0;height:280px}
+.herowrap{align-items:start}
 .chart canvas{width:100%;height:calc(100% - 24px);display:block}
 .ranges{display:flex;gap:2px;margin-bottom:4px}
 .ranges button{background:none;border:none;color:var(--faint);font:inherit;
@@ -130,7 +131,7 @@ tr.open-row{animation:breathe 2.4s ease-in-out infinite}
   h1{letter-spacing:.22em}
   .herowrap{grid-template-columns:1fr}
   .chart{border-right:none;border-bottom:1px solid var(--line-soft);
-    padding:8px 0;min-height:110px}
+    padding:8px 0;height:190px}
   .hero{grid-template-columns:1fr 1fr}
   .hero div{padding:16px 12px 14px;border-left:none;
     border-top:1px solid var(--line-soft)}
@@ -471,7 +472,7 @@ function drawBal(){
   const x0=Math.min(...xs), x1=Math.max(...xs);
   let y0=Math.min(...ys), y1=Math.max(...ys);
   const pad=(y1-y0)*0.12||1; y0-=pad; y1+=pad;
-  const X=t=>(t-x0)/(x1-x0||1)*(W-64)+2, Y=v=>H-8-(v-y0)/(y1-y0)*(H-22);
+  const X=t=>(t-x0)/(x1-x0||1)*(W-64)+2, Y=v=>H-24-(v-y0)/(y1-y0)*(H-40);
   const up=ys[ys.length-1]>=ys[0], line=tok(up?"--up":"--down"), dim=tok("--faint");
   // faint deposit baseline at $200
   if(200>y0&&200<y1){
@@ -482,7 +483,7 @@ function drawBal(){
   // area wash
   g.beginPath(); g.moveTo(X(xs[0]),Y(ys[0]));
   for(let i=1;i<xs.length;i++) g.lineTo(X(xs[i]),Y(ys[i]));
-  g.lineTo(X(xs[xs.length-1]),H-8); g.lineTo(X(xs[0]),H-8); g.closePath();
+  g.lineTo(X(xs[xs.length-1]),H-24); g.lineTo(X(xs[0]),H-24); g.closePath();
   g.globalAlpha=0.10; g.fillStyle=line; g.fill(); g.globalAlpha=1;
   // the line
   g.beginPath(); g.moveTo(X(xs[0]),Y(ys[0]));
@@ -496,7 +497,7 @@ function drawBal(){
     for(let i=0;i<xs.length;i++){const dx=Math.abs(X(xs[i])-scrubX);if(dx<bd){bd=dx;idx=i;}}
     const sx=X(xs[idx]), sy=Y(ys[idx]);
     g.strokeStyle=dim; g.setLineDash([3,4]); g.beginPath();
-    g.moveTo(sx,4); g.lineTo(sx,H-6); g.stroke(); g.setLineDash([]);
+    g.moveTo(sx,4); g.lineTo(sx,H-24); g.stroke(); g.setLineDash([]);
     g.beginPath(); g.arc(sx,sy,3.5,0,7); g.fillStyle=tok("--ink"); g.fill();
     const when=new Date(xs[idx]*1000).toLocaleString("en-US",{timeZone:"America/Chicago",
       month:"numeric",day:"numeric",hour:"numeric",minute:"2-digit"});
@@ -516,7 +517,24 @@ function drawBal(){
   g.fillText(`${d0>=0?"+":""}${d0.toFixed(2)} (${dp>=0?"+":""}${dp.toFixed(1)}%) ${balRange}`,2,26);
   // min/max ticks
   g.fillStyle=dim; g.font="9px "+tok("--mono");
-  g.fillText("$"+y1.toFixed(0),2,12); g.fillText("$"+y0.toFixed(0),2,H-10);
+  g.fillText("$"+y1.toFixed(0),2,12); g.fillText("$"+y0.toFixed(0),2,H-28);
+  // time axis: hours inside a day, dates beyond
+  const span=x1-x0, fmt=t=>{
+    const d=new Date(t*1000), o={timeZone:"America/Chicago"};
+    if(span<=90000) return d.toLocaleTimeString("en-US",{...o,hour:"numeric"});
+    if(span<=32*86400) return d.toLocaleDateString("en-US",{...o,month:"numeric",day:"numeric"});
+    return d.toLocaleDateString("en-US",{...o,month:"short"});
+  };
+  g.fillStyle=dim; g.font="9px "+tok("--mono"); g.textAlign="center";
+  const NT=Math.min(6,Math.max(3,Math.floor(W/130)));
+  for(let i=0;i<=NT;i++){
+    const t=x0+span*i/NT, tx=X(t);
+    if(tx<20||tx>W-70) continue;
+    g.fillText(fmt(t),tx,H-8);
+    g.strokeStyle=tok("--line-soft"); g.beginPath();
+    g.moveTo(tx,H-24); g.lineTo(tx,H-20); g.stroke();
+  }
+  g.textAlign="left";
 }
 paintRanges();
 (function(){
