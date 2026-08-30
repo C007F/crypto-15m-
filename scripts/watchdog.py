@@ -250,6 +250,9 @@ def collect_alerts(now: float | None = None, *,
                 close = ticker_close_utc(ticker)
                 opened = (close.timestamp() - 900) if close else now
                 age = now - opened
+            close = ticker_close_utc(ticker)
+            if close is not None and close.timestamp() <= now:
+                continue  # do not page a window that already closed
             if age > BOOK_STALE_SEC:
                 alerts.append({
                     "id": f"b:{a}", "level": "warn",
