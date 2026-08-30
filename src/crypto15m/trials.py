@@ -59,6 +59,41 @@ LIVE_BOOKS = frozenset({"micro"})
 # rejecting would otherwise absorb every tick of a window.
 MAX_ENTRY_ATTEMPTS = 3
 
+# Stage B polls at 0.5s, so three empties can land in one flicker and then
+# _spent locks the rest of the window. Require 2s between live entry attempts
+# so the three retries span ~6s the way they did at POLL_SEC=2.0.
+MIN_ATTEMPT_GAP_SEC = 2.0
+
+# Board Memo 010. dcf391e wrote `getattr(self.settings.params,
+# "take_profit_net", 0.03)` against a config system that has never existed.
+# getattr defends the inner name, not the attribute chain, so the outer
+# .params raised AttributeError - 1,299 times, once per tick per open
+# position, for three days. It took every exit down with it: scale-out,
+# bankable, edge_realised AND the should_flatten thesis cut, since all four
+# sit downstream of can_bank. It also killed _render and _write_status, so
+# the tape went dark and status.json froze the instant real money was on,
+# and it ratcheted __main__'s backoff to 60s - which is how often
+# guard.blocked() ran, i.e. how stale LIVE_KILL was over a live position.
+TAKE_PROFIT_NET = Decimal("0.03")
+
+# EXITS STAY DISARMED. Board vote 3-0: recall the crash, arm nothing.
+# Measured against the observation log, arming these would have cost about
+# $45 over three days (90% CI -$77 to -$21) on a book that earned +$72 -
+# micro wins 24.2% of the time at $0.086/contract, so it lives on the right
+# tail and a 3c take-profit sells the tail. should_flatten is no safer: it
+# cuts a NO when p_yes >= 0.65 while micro BUYS NO at a median p_yes of
+# 0.678, so 60.2% of entries are opened already satisfying their own cut
+# condition, and it fires a median 2.1s after entry for about -$22.
+#
+# Flipping this to True requires its own memo and vote. Conditions on the
+# record: _live_close must return the filled count and callers must reduce by
+# it (today a 1-of-5 fill books a 5-contract exit and strands 4 real
+# contracts); a crossed-book guard in decide() and bankable(); should_flatten
+# re-expressed against the ENTRY price with ENTRY_CUTOFF_SEC raised to 150;
+# fee_multiplier passed into bankable()'s taker_fee calls; and a full day of
+# genuine post-entry ticks, which have never existed because of this crash.
+EXITS_ARMED = False
+
 # Paper removed 2026-08-26. gate, momentum, lotto and sit were paper-only and
 # all had measured negative or flat expectancy - momentum -$0.18/trade, lotto
 # -$0.19/trade, gate flat - so they existed purely to be compared against, and
@@ -119,7 +154,12 @@ class TrialBook:
         self.path = settings.data_dir / "accounts" / f"{spec.book_id}.json"
         self._spent: set[str] = set()
         self._attempts: dict[str, int] = {}
+        self._last_attempt_at: dict[str, float] = {}
         self._scaled: set[str] = set()      # windows we have already scaled out of
+        # Memo 010. First crossing per (ticker, rule); in memory only, so a
+        # restart re-logs at most one row per open position. Deliberately not
+        # persisted - it is measurement, and it must not grow the state file.
+        self._shadow: set[str] = set()
         self._entries: dict[str, dict] = {}
         self.last_action = "boot"
         self.load()
@@ -152,6 +192,50 @@ class TrialBook:
         tmp = self.path.with_suffix(".tmp")
         tmp.write_text(json.dumps(payload, indent=2), encoding="utf-8")
         tmp.replace(self.path)
+
+    def _shadow_exit(self, pos, frame: FeatureFrame, view: ExpertView, journal) -> None:
+        """Record what an armed exit WOULD have done, without doing it.
+
+        Board Memo 010. These rules have never executed, and the crash that
+        disabled them also blanked the tape while a position was open, so
+        there is no post-entry data to judge them on - the counterfactual the
+        board rejected was built on zero genuine post-entry observations.
+        This writes one row the first time each rule would fire on a ticker.
+
+        It must never raise. An exception on this code path is precisely the
+        defect this memo recalls, so the whole body is guarded and a failure
+        costs a log line, not the tick.
+        """
+        try:
+            ticker = frame.market.ticker
+            checks = (
+                ("bankable", lambda: bankable(pos.side, pos.avg_price,
+                                              pos.contracts, frame.market,
+                                              TAKE_PROFIT_NET)),
+                ("edge_realised", lambda: edge_realised(pos.side, view, frame.market)),
+                ("thesis_flipped", lambda: should_flatten(
+                    pos.side, view, frame.remaining_sec,
+                    self.settings.flatten_cutoff_sec)),
+            )
+            for why, test in checks:
+                key = f"{ticker}:{why}"
+                if key in self._shadow or not test():
+                    continue
+                self._shadow.add(key)
+                bid = frame.market.yes_bid if pos.side == "yes" else frame.market.no_bid
+                journal.log(
+                    "exit_shadow",
+                    {"book": self.spec.book_id, "why": why, "armed": EXITS_ARMED,
+                     "side": pos.side, "n": str(pos.contracts),
+                     "entry": str(pos.avg_price), "bid": str(bid),
+                     "yes_bid": str(frame.market.yes_bid),
+                     "yes_ask": str(frame.market.yes_ask),
+                     "remaining_sec": round(frame.remaining_sec, 1),
+                     "p_yes": str(view.p_yes)},
+                    ticker,
+                )
+        except Exception:
+            log.warning("shadow exit check failed", exc_info=False)
 
     def pick_view(self, views: list[ExpertView], gated: ExpertView) -> ExpertView | None:
         if self.spec.kind == "sit":
@@ -312,6 +396,7 @@ class TrialBook:
             self.governor.roll_day(snap)
             self._spent.clear()
             self._attempts.clear()
+            self._last_attempt_at.clear()
             self._scaled.clear()
             journal.log("day_roll", {"book": self.spec.book_id, "equity": snap.equity}, frame.market.ticker)
 
@@ -359,9 +444,15 @@ class TrialBook:
         #
         # Only possible with 2+ contracts - a single contract cannot be halved,
         # so those still bank whole.
-        can_bank = bool(pos) and bankable(
+        # Memo 010: TAKE_PROFIT_NET is the literal this line always meant to
+        # read, and EXITS_ARMED keeps every branch below inert until the board
+        # arms it. Runtime behaviour is byte-for-byte the last three days,
+        # minus the crash.
+        if pos is not None:
+            self._shadow_exit(pos, frame, view, journal)
+        can_bank = EXITS_ARMED and bool(pos) and bankable(
             pos.side, pos.avg_price, pos.contracts, frame.market,
-            Decimal(str(getattr(self.settings.params, "take_profit_net", 0.03))))
+            TAKE_PROFIT_NET)
         if (can_bank and pos.contracts >= 2
                 and frame.market.ticker not in self._scaled):
             keep = (pos.contracts * Decimal("0.34")).to_integral_value(rounding="ROUND_DOWN")
@@ -386,10 +477,14 @@ class TrialBook:
                     self.save()
                     return self.last_action
 
-        took_profit = bool(pos) and (can_bank or edge_realised(pos.side, view, frame.market))
-        if pos and (took_profit or
-                    should_flatten(pos.side, view, frame.remaining_sec,
-                                   self.settings.flatten_cutoff_sec)):
+        took_profit = EXITS_ARMED and bool(pos) and (
+            can_bank or edge_realised(pos.side, view, frame.market))
+        # EXITS_ARMED gates should_flatten too. It is not the safe half: it
+        # cuts on the same p_yes that justified the entry (Memo 010).
+        if pos and EXITS_ARMED and (
+                took_profit or
+                should_flatten(pos.side, view, frame.remaining_sec,
+                               self.settings.flatten_cutoff_sec)):
             bid = frame.market.yes_bid if pos.side == "yes" else frame.market.no_bid
             fee = taker_fee(pos.contracts, bid, frame.market.fee_multiplier)
             before = self.portfolio.realized_pnl_today
@@ -439,8 +534,22 @@ class TrialBook:
             self.save()
             return self.last_action
 
+        tk = frame.market.ticker
+        if live and int(self._attempts.get(tk, 0)) > 0:
+            import time as _time
+            last = float(self._last_attempt_at.get(tk, 0.0))
+            if last and (_time.monotonic() - last) < MIN_ATTEMPT_GAP_SEC:
+                self.last_action = (
+                    f"retry cooling ({self._attempts[tk]}/{MAX_ENTRY_ATTEMPTS})"
+                )
+                self.save()
+                return self.last_action
+
         got = self._fill(frame, intent, permit, now, journal, live, client, view, views)
         tk = frame.market.ticker
+        if live:
+            import time as _time
+            self._last_attempt_at[tk] = _time.monotonic()
         if got:
             self._spent.add(tk)
             self.last_action = f"bought {intent.side} x{got}"
