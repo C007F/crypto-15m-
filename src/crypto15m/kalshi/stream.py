@@ -44,10 +44,15 @@ DISCOVER_EVERY = 20.0        # re-list open markets this often (1 REST call/seri
 WRITE_MIN_GAP = 0.15         # per-ticker write throttle, seconds
 ET = ZoneInfo("America/New_York")
 
-# Board Memo 005 part 2. Synthesized tickers are LOGGED against discover()
-# for 24h before they may drive a subscribe. Flip only after the chairman
-# reviews the shadow log.
-SHADOW_CALENDAR = True
+# Board Memo 005 part 2 drove the subscribe path from 2026-08-28 17:01.
+# Synthesis is NO LONGER shadow: the subscribe set below is discover() UNION
+# the clock tickers, so a 429 on discover cannot leave a coin unsubscribed.
+#
+# This flag controls the comparison LOG ONLY. It does not gate subscription,
+# and it must not be read as if it did - it was named SHADOW_CALENDAR while
+# it still meant "shadow", and leaving that name over code that subscribes
+# anyway is how trials.py:371 hid for three days.
+LOG_CALENDAR_COMPARE = True
 
 
 class Book:
@@ -188,8 +193,9 @@ class Streamer:
     def _record_calendar_shadow(self, want: set[str], ok_series: set[str]) -> None:
         """Memo 005 part 2: log synthesized tickers against discover().
 
-        Does not subscribe. After 24h the chairman can flip SHADOW_CALENDAR
-        off and let synthesis drive the subscribe path.
+        This function does not subscribe; the caller does, from the union of
+        discover() and synthesis. The row is kept because it is the only
+        measure of how far the two disagree.
         """
         synth = synthesize_window_tickers()
         synth_set = set(synth.values())
@@ -260,10 +266,13 @@ class Streamer:
                 if now - last_discover > DISCOVER_EVERY:
                     last_discover = now
                     want, ok_series = await asyncio.to_thread(self.discover)
-                    if SHADOW_CALENDAR:
+                    if LOG_CALENDAR_COMPARE:
                         self._record_calendar_shadow(want, ok_series)
-                    # Subscribe path uses discover() only. Synthesis is
-                    # shadow until the chairman flips it. Memo 005 part 2.
+                    # Clock tickers always subscribe even if discover 429s.
+                    # That hole was HYPE sitting 15 minutes with no book file
+                    # and the watchdog paging every rotate.
+                    synth = set(synthesize_window_tickers().values())
+                    want = want | synth
                     new = want - self.subscribed
                     if new:
                         await ws.send(json.dumps({

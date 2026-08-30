@@ -232,4 +232,25 @@ Scoreboard for the next clean segment: **burst windows and first-shot at
 POLL 2.0 with no further plumbing landing in the same deploy.** If anything
 else ships alongside it, this board has no scoreboard at all.
 
-**CHAIRMAN: pending.**
+**CHAIRMAN: ruling 2026-08-30.**
+
+- **Items 1, 2, watchdog, memos — APPROVED, executed.** Commits 04f8252,
+  70f3227, c759994, 0618946. The Memo 010 recall is now committed matter
+  rather than a single uncommitted working tree.
+- **Item 4 (Memo 005 part 2) — KEEP, and the board's revert recommendation is
+  overturned.** The behaviour is correct: a 429 on `discover()` must not be
+  able to leave a coin unsubscribed for a full window, which is what happened
+  to HYPE. The Claude seat's case for reverting rested on restoring a clean
+  scoreboard, and that case is weaker than it was argued: 009's *mechanism*
+  claim is already settled by burst windows (7 under POLL 0.5 against 2 in
+  glory and 2 now), a metric the subscribe set cannot touch. Only the
+  first-shot percentage is confounded, and at n=32 and n=50 those segments
+  were never going to settle anything. Reintroducing a real blind spot to
+  clean up a thin number is a bad trade. **Condition attached and met:**
+  `SHADOW_CALENDAR` is renamed `LOG_CALENDAR_COMPARE` and its comment,
+  docstring and tests corrected, because a flag reading `SHADOW_CALENDAR =
+  True` above code that subscribes anyway is the same defect shape as
+  trials.py:371 - a line that said something it did not do.
+- **Item 3 (zec) — STILL PENDING.** Held out of the tree. Needs its own memo,
+  and the depth figure in the source comment must be corrected to 30 against
+  bnb's 20 before it is used to justify anything.

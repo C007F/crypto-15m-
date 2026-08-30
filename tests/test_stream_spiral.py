@@ -13,7 +13,7 @@ from zoneinfo import ZoneInfo
 
 from crypto15m.assets import ASSETS, poll_jitter_sec
 from crypto15m.kalshi.stream import (
-    SHADOW_CALENDAR,
+    LOG_CALENDAR_COMPARE,
     synthesize_window_tickers,
     tickers_to_drop,
     write_heartbeat,
@@ -51,7 +51,7 @@ class NeverDeleteOnAbsence(unittest.TestCase):
         self.assertEqual(tickers_to_drop(held, set(), set()), set())
 
 
-class CalendarShadow(unittest.TestCase):
+class CalendarCompare(unittest.TestCase):
     def test_format_matches_known_ticker(self):
         now = datetime(2026, 8, 28, 11, 58, tzinfo=ET)   # 11:58 ET -> close 12:00
         got = synthesize_window_tickers(now)
@@ -65,18 +65,17 @@ class CalendarShadow(unittest.TestCase):
             "KXBTC15M-26AUG281215-15",
         )
 
-    def test_shadow_flag_is_on(self):
-        """Part 2 must not drive subscribe until the chairman flips this."""
-        self.assertTrue(SHADOW_CALENDAR)
+    def test_compare_log_flag_is_on(self):
+        """The compare log stays on; it is the only measure of drift between
+        discover() and the clock. It does NOT gate subscription - synthesis
+        has driven the subscribe path since 8/28 17:01."""
+        self.assertTrue(LOG_CALENDAR_COMPARE)
 
-    def test_subscribe_path_does_not_union_synth(self):
+    def test_subscribe_unions_clock_tickers(self):
         src = (Path(__file__).resolve().parents[1] /
                "src/crypto15m/kalshi/stream.py").read_text()
-        # The live subscribe set is want from discover, not synth.
+        self.assertIn("want = want | synth", src)
         self.assertIn("new = want - self.subscribed", src)
-        self.assertIn("SHADOW_CALENDAR", src)
-        self.assertNotIn("new = (want | synth", src)
-        self.assertNotIn("want |= ", src)
 
 
 class HeartbeatAndJitter(unittest.TestCase):
