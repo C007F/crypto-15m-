@@ -1,0 +1,15 @@
+[Unit]
+Description=Crypto 15m streamed-book vs Kalshi truth sampler (Memo 014 - stakes nothing)
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/cam/projects/crypto-15m-bot
+Environment=PYTHONUNBUFFERED=1
+Environment=ASSET=btc
+ExecStart=/home/cam/projects/crypto-15m-bot/.venv/bin/python scripts/book_truth.py
+Restart=always
+RestartSec=15
+
+[Install]
+WantedBy=default.target
