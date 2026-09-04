@@ -55,7 +55,13 @@ class LiveLimits:
     rounding error, and the cap has to be legible at a glance."""
 
     daily_loss_usd: Decimal = Decimal("15")
-    max_contracts_hard: int = 8          # ceiling regardless of stage
+    # Board Memo 015. Was 8. Cut to 1 on 2026-09-03: the 200-trade gate is met
+    # (553 settled) and no edge is demonstrated - 429 trades since 8/28 made
+    # $2.25, t=+0.05. An undemonstrated edge does not earn 8 contracts while
+    # the persistence filter runs in shadow. This is the ONE lever that holds:
+    # max_contracts = min(STAGES[stage], max_contracts_hard), so the ladder can
+    # climb back to stage 2 without effect. Raising this is a board decision.
+    max_contracts_hard: int = 1          # ceiling regardless of stage
     max_open_positions: int = 6          # one per coin
     min_equity_usd: Decimal = Decimal("50")
 

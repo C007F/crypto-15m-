@@ -45,26 +45,47 @@ class Guard(unittest.TestCase):
         self.assertEqual(self.g.clamp(Decimal("999")),
                          Decimal(self.g.limits.max_contracts_hard))
 
+    def _ladder_guard(self):
+        """A guard with the ORIGINAL 8 ceiling, for testing the ramp itself.
+
+        Memo 015 cut the deployed default to 1 while micro's edge is
+        undemonstrated. That is a policy knob; the 1 -> 3 -> 8 ladder is
+        mechanism, and these tests are about the mechanism. Pinning the
+        ceiling explicitly keeps them honest either way.
+        """
+        return LiveGuard(self.d / "ladder.json", limits=LiveLimits(max_contracts_hard=8))
+
     def test_ramp_climbs_to_the_hard_ceiling_and_stops(self):
+        g = self._ladder_guard()
         for _ in range(200):
-            self.g.note_order()
-        self.assertEqual(self.g.max_contracts, 8,
+            g.note_order()
+        self.assertEqual(g.max_contracts, 8,
                          "ramp tops out at the hard ceiling and stays there")
 
     def test_ramp_steps_on_filled_orders(self):
         """1 -> 3 -> 8, ten fills per step."""
-        self.assertEqual(self.g.max_contracts, 1)
+        g = self._ladder_guard()
+        self.assertEqual(g.max_contracts, 1)
         for _ in range(10):
-            self.g.note_order()
-        self.assertEqual(self.g.max_contracts, 3)
+            g.note_order()
+        self.assertEqual(g.max_contracts, 3)
         for _ in range(10):
+            g.note_order()
+        self.assertEqual(g.max_contracts, 8)
+
+    def test_deployed_ceiling_is_one_until_the_board_says_otherwise(self):
+        """Memo 015: 553 trades, no edge demonstrated. Raising this is a vote."""
+        self.assertEqual(LiveLimits().max_contracts_hard, 1)
+        for _ in range(200):
             self.g.note_order()
-        self.assertEqual(self.g.max_contracts, 8)
+        self.assertEqual(self.g.max_contracts, 1,
+                         "the ladder must not climb past the hard ceiling")
 
     def test_state_survives_restart(self):
+        g = self._ladder_guard()
         for _ in range(12):
-            self.g.note_order()
-        again = LiveGuard(self.d / "live.json")
+            g.note_order()
+        again = LiveGuard(self.d / "ladder.json", limits=LiveLimits(max_contracts_hard=8))
         # 10 advanced the stage and reset the counter, so 2 remain at stage 1.
         self.assertEqual(again.state.stage, 1)
         self.assertEqual(again.state.orders_at_stage, 2)
@@ -344,22 +365,33 @@ class RetryOnRejection(unittest.TestCase):
         self.assertIn("if report.side is None:", dec)
 
 
-class ZecExcludedFromLive(unittest.TestCase):
-    """ZEC's spread is 8c against 1c on every other coin.
+class NearExcludedFromLive(unittest.TestCase):
+    """NEAR is excluded on COVERAGE, not spread.
 
-    A 5c edge is gone before the trade starts. Live it went 0 for 5 and
-    carried $1.04 of a $1.05 total loss; the other five combined were within a
-    cent of flat. Excluded structurally, not by leaving a service unstarted -
-    a stopped service restarts.
+    Only 214 of btc's 282 windows exist in the observation log (76%), so a
+    quarter of a near trader's ticks would poll for markets that are not there
+    and spend rate limit the account does not have.
+
+    ZEC was on this list from 8/24 to 8/28 on an 8c-vs-1c spread reading and an
+    0-for-5 live record. The chairman re-admitted it after remeasurement over
+    272 settled windows: 1.6c median spread in the 150-60s entry window against
+    ~0.4c for the live seven, median depth 49 against bnb's 10, and clearing
+    MAX_SPREAD on ~90% of entry windows. Excluded structurally, not by leaving
+    a service unstarted - a stopped service restarts.
     """
 
-    def test_zec_is_on_the_exclusion_list(self):
+    def test_near_is_on_the_exclusion_list(self):
         from crypto15m.bot import NO_LIVE_ASSETS
-        self.assertIn("zec", NO_LIVE_ASSETS)
+        self.assertIn("near", NO_LIVE_ASSETS)
+
+    def test_zec_is_no_longer_excluded(self):
+        """Chairman's ruling 8/28. Reverting this is a board decision."""
+        from crypto15m.bot import NO_LIVE_ASSETS
+        self.assertNotIn("zec", NO_LIVE_ASSETS)
 
     def test_other_coins_are_not_excluded(self):
         from crypto15m.bot import NO_LIVE_ASSETS
-        for coin in ("btc", "eth", "xrp", "doge", "sol"):
+        for coin in ("btc", "eth", "xrp", "doge", "sol", "bnb", "hype"):
             self.assertNotIn(coin, NO_LIVE_ASSETS)
 
     def test_the_check_runs_before_any_book_is_built(self):
@@ -369,10 +401,32 @@ class ZecExcludedFromLive(unittest.TestCase):
         books = src.index("self.books = [TrialBook(")
         self.assertLess(guard, books, "exclusion must gate before books exist")
 
-    def test_zec_still_runs_on_paper(self):
-        """It stays configured so paper and the ladder keep observing it."""
+    def test_excluded_coins_stay_configured(self):
+        """They stay in ASSETS so the observer and ladder keep watching them."""
         from crypto15m.assets import ASSETS
+        self.assertIn("near", ASSETS)
         self.assertIn("zec", ASSETS)
+
+    def test_zec_has_a_prewarmed_history_cache(self):
+        """A newly-admitted coin must not fetch ~25 Coinbase pages on start -
+        that is the Memo 006 stampede, aimed at a fresh process."""
+        from pathlib import Path
+        from crypto15m.perception.history import EmpiricalMoves
+        self.assertTrue((EmpiricalMoves.CACHE_DIR / "ZEC-USD.json").exists(),
+                        "run: python scripts/prewarm_history.py zec")
+
+    def test_zec_live_book_starts_clean(self):
+        """The 8/24-25 paper-era book held a phantom position and $19.12 of
+        fake realized P&L. A live book must not load it."""
+        from pathlib import Path
+        acct = (Path(__file__).resolve().parents[1] /
+                "data" / "zec" / "accounts" / "micro.json")
+        if not acct.exists():
+            return                       # clean slate, nothing to check
+        import json
+        p = json.loads(acct.read_text())["portfolio"]
+        self.assertEqual(p.get("positions") or {}, {},
+                         "zec live book opened holding a position it never bought")
 
 
 class TakeProfitWhenTheEdgeIsGone(unittest.TestCase):
