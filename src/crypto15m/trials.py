@@ -667,6 +667,35 @@ class TrialBook:
             if count < 1:
                 self.last_action = "live cap allows nothing"
                 return 0
+            # Board Memo 015 follow-up. The hard ceiling is 1, so
+            # conviction_size() is inert - every live entry is the same size
+            # whatever the model thinks. That discards the signal instead of
+            # testing it. Journal what conviction WOULD have asked for, so the
+            # question is answerable in a week without paying to find out.
+            #
+            # Measured over 553 pre-cut trades: conviction sorts in the right
+            # direction and holds in BOTH halves (low 1-2 contracts
+            # -0.012/contract against high 5+ at +0.042), but the separation
+            # decayed 5.5x between halves (+0.083 -> +0.015). And size 3 - the
+            # middle rung of the 1/3/8 ladder - was the single worst bucket at
+            # -0.097/contract (n=23), while 4-5 carried the book and 8 did not
+            # pay either (-0.006, n=42). So this is not an argument for raising
+            # the ceiling to 3; it is an argument for measuring before raising
+            # anything. Never raises: a broken measurement must not cost a tick.
+            try:
+                journal.log("size_shadow", {
+                    "book": self.spec.book_id,
+                    "conviction": str(intent.contracts),
+                    "after_governor": str(permit.max_contracts),
+                    "actually_sent": str(count),
+                    "side": intent.side,
+                    "p_yes": str(view.p_yes),
+                    "uncertainty": str(view.uncertainty),
+                    "ev": str(intent.ev),
+                    "remaining_sec": round(frame.remaining_sec, 1),
+                }, market.ticker)
+            except Exception:
+                log.warning("size shadow failed", exc_info=False)
         price = intent.limit_price
         if not live:
             # Paper/shadow fills book at the QUOTED ask, not the cushioned
